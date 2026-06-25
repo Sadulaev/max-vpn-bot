@@ -1,0 +1,48 @@
+# Dependencies
+node_modules/
+package-lock.json
+
+# Config with secrets (keep servers.example.json as template)
+data/servers.json
+
+# Build
+dist/
+build/
+
+# Environment (secrets - NEVER commit these!)
+.env
+.env.*
+!.env.example
+*.env
+env.prod*
+
+# Sessions (Telegraf local sessions)
+sessions/
+*.session.json
+*_session_db.json
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Testing
+coverage/
+.nyc_output/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# OS files
+Thumbs.db
+Desktop.ini
+

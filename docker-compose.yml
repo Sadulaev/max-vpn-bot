@@ -1,0 +1,58 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: santa-vpn-db
+    environment:
+      POSTGRES_USER: vpn
+      POSTGRES_PASSWORD: neron
+      POSTGRES_DB: santa_vpn
+    ports:
+      - "127.0.0.1:5432:5432"  # Только localhost - НЕ доступен из интернета
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vpn -d santa_vpn"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - vpn-net
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: santa-vpn-app
+    env_file:
+      - .env
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USERNAME: vpn
+      DB_PASSWORD: neron
+      DB_NAME: santa_vpn
+    ports:
+      - "${PORT:-3000}:${PORT:-3000}"
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
+    volumes:
+      - ./sessions:/app/sessions
+      - ./assets:/app/assets
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - vpn-net
+
+volumes:
+  postgres_data:
+
+networks:
+  vpn-net:
+    driver: bridge
+    driver_opts:
+      com.docker.network.driver.mtu: "1450"
