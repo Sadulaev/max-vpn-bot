@@ -35,7 +35,8 @@ export class MaxBotService implements OnModuleInit {
       if (!userId) {
         return;
       }
-      const ctx = await this.createMessageContext(userId, '/start', update, undefined);
+      const chatId = this.extractChatId(update);
+      const ctx = await this.createMessageContext(userId, '/start', update, undefined, chatId);
       await this.userBotService.handleStart(ctx as any);
       await this.saveSession(userId, ctx.session);
       return;
@@ -58,7 +59,8 @@ export class MaxBotService implements OnModuleInit {
       return;
     }
 
-    const ctx = await this.createMessageContext(userId, text, update, update?.message?.body?.mid);
+    const chatId = this.extractChatId(update);
+    const ctx = await this.createMessageContext(userId, text, update, update?.message?.body?.mid, chatId);
 
     const trimmedText = String(text || '').trim();
     if (/^\/start(?:\s+.+)?$/i.test(trimmedText)) {
@@ -87,7 +89,8 @@ export class MaxBotService implements OnModuleInit {
       return;
     }
 
-    const ctx = await this.createCallbackContext(userId, payload, callbackId, update, messageId);
+    const chatId = this.extractChatId(update);
+    const ctx = await this.createCallbackContext(userId, payload, callbackId, update, messageId, chatId);
     const handled = await this.dispatchCallback(ctx as any, payload);
 
     if (!handled) {
@@ -202,7 +205,7 @@ export class MaxBotService implements OnModuleInit {
     return false;
   }
 
-  private async createMessageContext(userId: string, text: string, update: any, messageId?: string): Promise<any> {
+  private async createMessageContext(userId: string, text: string, update: any, messageId?: string, chatId?: string): Promise<any> {
     const session = await this.getSession(userId);
     return {
       session,
@@ -213,8 +216,8 @@ export class MaxBotService implements OnModuleInit {
           id: Number(userId),
         },
       },
-      reply: (messageText: string, options?: any) => this.maxApiService.sendMessage(userId, messageText, options),
-      replyWithPhoto: (photo: any, options?: any) => this.maxApiService.sendPhoto(userId, photo, options),
+      reply: (messageText: string, options?: any) => this.maxApiService.sendMessage(userId, messageText, { ...options, chatId }),
+      replyWithPhoto: (photo: any, options?: any) => this.maxApiService.sendPhoto(userId, photo, { ...options, chatId }),
       answerCbQuery: (notification?: string) => notification ? Promise.resolve() : Promise.resolve(),
       deleteMessage: () => messageId ? this.maxApiService.deleteMessage(messageId) : Promise.resolve(),
     };
@@ -226,6 +229,7 @@ export class MaxBotService implements OnModuleInit {
     callbackId: string,
     update: any,
     messageId?: string,
+    chatId?: string,
   ): Promise<any> {
     const session = await this.getSession(userId);
     return {
@@ -238,11 +242,20 @@ export class MaxBotService implements OnModuleInit {
           id: Number(userId),
         },
       },
-      reply: (messageText: string, options?: any) => this.maxApiService.sendMessage(userId, messageText, options),
-      replyWithPhoto: (photo: any, options?: any) => this.maxApiService.sendPhoto(userId, photo, options),
+      reply: (messageText: string, options?: any) => this.maxApiService.sendMessage(userId, messageText, { ...options, chatId }),
+      replyWithPhoto: (photo: any, options?: any) => this.maxApiService.sendPhoto(userId, photo, { ...options, chatId }),
       answerCbQuery: (notification?: string) => this.maxApiService.answerCallback(callbackId, notification),
       deleteMessage: () => messageId ? this.maxApiService.deleteMessage(messageId) : Promise.resolve(),
     };
+  }
+
+  private extractChatId(update: any): string | undefined {
+    const chatId = update?.chat?.chat_id
+      ?? update?.message?.chat?.chat_id
+      ?? update?.message?.chat_id
+      ?? update?.callback?.chat?.chat_id
+      ?? update?.callback?.chat_id;
+    return chatId != null ? chatId.toString() : undefined;
   }
 
   private isReferralCode(text: string): boolean {

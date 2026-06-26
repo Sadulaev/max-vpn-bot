@@ -83,10 +83,14 @@ export class MaxApiService {
     this.logger.log(`MAX webhook registered: ${webhookUrl}`);
   }
 
-  async sendMessage(userId: string, text: string, options: SendMessageOptions = {}): Promise<any> {
+  async sendMessage(userId: string, text: string, options: SendMessageOptions & { chatId?: string } = {}): Promise<any> {
+    const recipient: Record<string, unknown> = options.chatId
+      ? { chat_id: Number(options.chatId) }
+      : { user_id: Number(userId) };
+
     return this.sendRawMessage(
       {
-        user_id: Number(userId),
+        ...recipient,
         text,
         format: this.mapFormat(options.parse_mode),
         link_preview: options.disable_web_page_preview === true ? false : undefined,
@@ -99,7 +103,7 @@ export class MaxApiService {
   async sendPhoto(
     userId: string,
     photo: { source: string | Buffer } | Buffer | string,
-    options: SendPhotoOptions = {},
+    options: SendPhotoOptions & { chatId?: string } = {},
   ): Promise<any> {
     const source = this.extractPhotoSource(photo);
     const fileName = typeof source === 'string' ? basename(source) : 'image.jpg';
@@ -114,9 +118,13 @@ export class MaxApiService {
       ...this.buildKeyboardAttachments(options.reply_markup),
     ];
 
+    const recipient: Record<string, unknown> = options.chatId
+      ? { chat_id: Number(options.chatId) }
+      : { user_id: Number(userId) };
+
     return this.sendRawMessage(
       {
-        user_id: Number(userId),
+        ...recipient,
         text: options.caption ?? '',
         format: this.mapFormat(options.parse_mode),
         link_preview: options.disable_web_page_preview === true ? false : undefined,
