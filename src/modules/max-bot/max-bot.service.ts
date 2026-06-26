@@ -23,6 +23,7 @@ export class MaxBotService implements OnModuleInit {
     await this.loadSessions();
     await this.maxApiService.ensureWebhook().catch((error) => {
       this.logger.warn(`MAX webhook registration skipped: ${(error as Error).message}`);
+      console.log(error);
     });
   }
 
