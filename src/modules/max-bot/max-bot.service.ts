@@ -207,18 +207,18 @@ export class MaxBotService implements OnModuleInit {
 
   private async createMessageContext(userId: string, text: string, update: any, messageId?: string, chatId?: string): Promise<any> {
     const session = await this.getSession(userId);
+    const userNum = Number(userId);
     return {
       session,
       update,
+      from: { id: userNum },
       message: {
         text,
-        from: {
-          id: Number(userId),
-        },
+        from: { id: userNum },
       },
       reply: (messageText: string, options?: any) => this.maxApiService.sendMessage(userId, messageText, { ...options, chatId }),
       replyWithPhoto: (photo: any, options?: any) => this.maxApiService.sendPhoto(userId, photo, { ...options, chatId }),
-      answerCbQuery: (notification?: string) => notification ? Promise.resolve() : Promise.resolve(),
+      answerCbQuery: (_notification?: string) => Promise.resolve(),
       deleteMessage: () => messageId ? this.maxApiService.deleteMessage(messageId) : Promise.resolve(),
     };
   }
@@ -232,15 +232,15 @@ export class MaxBotService implements OnModuleInit {
     chatId?: string,
   ): Promise<any> {
     const session = await this.getSession(userId);
+    const userNum = Number(userId);
     return {
       session,
       update,
+      from: { id: userNum },
       callbackQuery: {
         id: callbackId,
         data: payload,
-        from: {
-          id: Number(userId),
-        },
+        from: { id: userNum },
       },
       reply: (messageText: string, options?: any) => this.maxApiService.sendMessage(userId, messageText, { ...options, chatId }),
       replyWithPhoto: (photo: any, options?: any) => this.maxApiService.sendPhoto(userId, photo, { ...options, chatId }),

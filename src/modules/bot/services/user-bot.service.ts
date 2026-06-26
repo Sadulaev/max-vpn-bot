@@ -153,14 +153,24 @@ export class UserBotService {
 
     const buttons = Markup.inlineKeyboard((dynamicButtons ?? hardcodedButtons) as any);
 
-    await ctx.replyWithPhoto(
-      { source: './assets/max-default.png' },
-      {
-        caption,
+    try {
+      await ctx.replyWithPhoto(
+        { source: './assets/max-default.png' },
+        {
+          caption,
+          parse_mode: 'HTML',
+          reply_markup: buttons.reply_markup,
+        },
+      );
+    } catch (photoError) {
+      this.logger.warn(
+        `Failed to send photo in main menu, falling back to text: ${(photoError as Error).message}`,
+      );
+      await ctx.reply(caption, {
         parse_mode: 'HTML',
         reply_markup: buttons.reply_markup,
-      },
-    );
+      });
+    }
   }
 
   /**
