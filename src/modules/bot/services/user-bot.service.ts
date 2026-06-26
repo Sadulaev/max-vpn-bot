@@ -154,7 +154,7 @@ export class UserBotService {
     const buttons = Markup.inlineKeyboard((dynamicButtons ?? hardcodedButtons) as any);
 
     await ctx.replyWithPhoto(
-      { source: './assets/santa-default.jpeg' },
+      { source: './assets/max-default.png' },
       {
         caption,
         parse_mode: 'HTML',

@@ -1,7 +1,7 @@
 {
-  "name": "santa-vpn",
+  "name": "hit-vpn",
   "version": "1.0.0",
-  "description": "Santa VPN Telegram Bot with payment integration",
+  "description": "HIT VPN Telegram Bot with payment integration",
   "author": "",
   "private": true,
   "license": "UNLICENSED",

@@ -14,7 +14,6 @@ import { RemnawaveApiModule } from '@modules/remnawave-api';
 import { SubscriptionsModule } from '@modules/subscriptions';
 import { TasksModule } from '@modules/tasks';
 import { ReferralModule } from '@modules/referral/referral.module';
-import { SantaChatModule } from '@modules/santa-chat';
 import { BotPagesModule } from '@modules/bot-pages';
 import { MaxApiModule } from '@modules/max-api';
 import { MaxBotModule } from '@modules/max-bot';
@@ -58,7 +57,6 @@ import { TypeOrmModule } from '@nestjs/typeorm';
     UserBotModule,
     TasksModule,
     ReferralModule,
-    SantaChatModule,
     BotPagesModule,
   ],
   providers: [

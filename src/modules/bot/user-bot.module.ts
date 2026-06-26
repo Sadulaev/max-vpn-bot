@@ -8,6 +8,7 @@ import { DeviceSlotPlansModule } from '@modules/device-slot-plans/device-slot-pl
 import { BotPagesModule } from '@modules/bot-pages';
 import { UserBotService } from './services/user-bot.service';
 import { UserBotUpdate } from './user-bot.update';
+import { MaxApiModule } from '@modules/max-api/max-api.module';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { UserBotUpdate } from './user-bot.update';
     TypeOrmModule.forFeature([BotState, Plan, DeviceSlotPlan]),
     DeviceSlotPlansModule,
     BotPagesModule,
+    MaxApiModule,
   ],
   providers: [UserBotService, UserBotUpdate],
   exports: [UserBotService],

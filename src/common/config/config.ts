@@ -69,7 +69,7 @@ export default (): Config => ({
     port: parseInt(process.env.DB_PORT || "5432", 10),
     username: process.env.DB_USERNAME || "vpn",
     password: process.env.DB_PASSWORD || "neron",
-    database: process.env.DB_NAME || "santa_vpn",
+    database: process.env.DB_NAME || "max_vpn",
   },
   telegram: {
     userBotToken: process.env.TG_USER_BOT_TOKEN || "",

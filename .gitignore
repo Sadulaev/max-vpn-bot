@@ -46,3 +46,6 @@ temp/
 Thumbs.db
 Desktop.ini
 
+# build info
+tsconfig.tsbuildinfo
+

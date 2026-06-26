@@ -51,7 +51,7 @@ export class FreekassaService {
   async generatePaymentUrl(params: FreekassaPaymentParams): Promise<FreekassaPaymentResult> {
     const { invId, amount, email, telegramId } = params;
     const amountStr = amount.toFixed(2);
-    const effectiveEmail = email || (telegramId ? `${telegramId}@telegram.org` : `noreply@santa-cloud.tech`);
+    const effectiveEmail = email || (telegramId ? `${telegramId}@telegram.org` : `noreply@max-vpn.tech`);
     const nonce = Date.now();
 
     const payload: Record<string, any> = {
