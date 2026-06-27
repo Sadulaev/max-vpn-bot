@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import type { NewMessageBody, MaxButtonRow } from '@modules/max-api';
+import type { NewMessageBody, MaxButtonRow, MaxAttachment } from '@modules/max-api';
 import { PlansService } from '@modules/plans';
 import { SubscriptionsService } from '@modules/subscriptions';
 
@@ -33,7 +33,7 @@ export class BotPagesService {
   }
 
   /** Главное меню */
-  buildMainMenu(userId: number, userName?: string): NewMessageBody {
+  buildMainMenu(userId: number, userName?: string, imageToken?: string | null): NewMessageBody {
     const greeting = userName ? `👋 Привет, **${userName}**!\n\n` : '';
     const text = `${greeting}${MAIN_TEXT}\n\n🆔 Ваш ID: \`${userId}\``;
 
@@ -49,15 +49,18 @@ export class BotPagesService {
       buttons.push([{ type: 'link', text: '📡 Наш канал', url: this.channelLink }]);
     }
 
+    const attachments: MaxAttachment[] = [];
+
+    if (imageToken) {
+      attachments.push({ type: 'image', payload: { token: imageToken } });
+    }
+
+    attachments.push({ type: 'inline_keyboard', payload: { buttons } });
+
     return {
       text,
       format: 'markdown',
-      attachments: [
-        {
-          type: 'inline_keyboard',
-          payload: { buttons },
-        },
-      ],
+      attachments,
     };
   }
 

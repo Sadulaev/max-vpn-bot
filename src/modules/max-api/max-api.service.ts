@@ -150,6 +150,64 @@ export class MaxApiService implements OnModuleInit {
     return res.json() as Promise<MaxAnswerCallbackResponse>;
   }
 
+  // ─── Upload ───
+
+  /**
+   * Загрузить изображение в MAX и получить токен для использования в сообщениях.
+   * Процесс: POST /uploads?type=image → URL → POST file → { token }
+   *
+   * @param buffer    Буфер файла
+   * @param filename  Имя файла (используется как MIME hint)
+   * @returns         Токен изображения или null при ошибке
+   */
+  async uploadImage(buffer: Buffer, filename = 'image.png'): Promise<string | null> {
+    if (!this.isConfigured()) return null;
+
+    // Шаг 1: получить URL для загрузки
+    const urlRes = await fetch(`${this.apiUrl}/uploads?type=image`, {
+      method: 'POST',
+      headers: { Authorization: this.botToken },
+    });
+
+    if (!urlRes.ok) {
+      const text = await urlRes.text().catch(() => '');
+      this.logger.error(`getUploadUrl(image) failed (${urlRes.status}): ${text}`);
+      return null;
+    }
+
+    const { url } = (await urlRes.json()) as { url: string };
+
+    // Шаг 2: загрузить файл multipart/form-data
+    const mimeType = filename.endsWith('.png') ? 'image/png' : 'image/jpeg';
+    const formData = new FormData();
+    // Buffer → Uint8Array, чтобы избежать несовместимости типов с BlobPart
+    const blob = new Blob([new Uint8Array(buffer)], { type: mimeType });
+    formData.append('data', blob, filename);
+
+    const uploadRes = await fetch(url, {
+      method: 'POST',
+      // Не устанавливаем Content-Type — fetch выставит его автоматически с boundary
+      body: formData,
+    });
+
+    if (!uploadRes.ok) {
+      const text = await uploadRes.text().catch(() => '');
+      this.logger.error(`uploadImage failed (${uploadRes.status}): ${text}`);
+      return null;
+    }
+
+    const data = (await uploadRes.json()) as { token?: string };
+    const token = data.token ?? null;
+
+    if (token) {
+      this.logger.log(`Image uploaded successfully, token length=${token.length}`);
+    } else {
+      this.logger.warn(`Image upload succeeded but no token in response: ${JSON.stringify(data)}`);
+    }
+
+    return token;
+  }
+
   // ─── Webhooks ───
 
   /**

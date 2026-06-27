@@ -1,5 +1,7 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { readFileSync, existsSync } from 'fs';
+import { join } from 'path';
 import { MaxApiService } from '@modules/max-api';
 import type { MaxUpdate, MaxBotStartedUpdate, MaxMessageCreatedUpdate, MaxMessageCallbackUpdate } from '@modules/max-api';
 import { BotPagesService } from '@modules/bot-pages';
@@ -15,6 +17,8 @@ const pendingReferrals = new Map<string, string>(); // userId → referrerId
 @Injectable()
 export class MaxBotService implements OnModuleInit {
   private readonly logger = new Logger(MaxBotService.name);
+  /** Токен баннерного изображения, закешированный при старте */
+  private cachedImageToken: string | null = null;
 
   constructor(
     private readonly maxApi: MaxApiService,
@@ -35,23 +39,46 @@ export class MaxBotService implements OnModuleInit {
       return;
     }
 
-    if (!baseUrl) {
+    // Регистрируем webhook
+    if (baseUrl) {
+      const webhookUrl = `${baseUrl.replace(/\/$/, '')}/max/webhook`;
+      this.logger.log(`Registering MAX webhook: ${webhookUrl}`);
+      const ok = await this.maxApi.registerWebhook(webhookUrl, webhookSecret || undefined);
+      if (ok) {
+        this.logger.log('MAX webhook registered successfully');
+      } else {
+        this.logger.warn('MAX webhook registration returned failure (check URL/token)');
+      }
+    } else {
       this.logger.warn('BASE_URL not set — skipping webhook registration');
+    }
+
+    // Загружаем баннерное изображение
+    await this.warmUpBannerImage();
+  }
+
+  /** Загружает assets/max-default.png и кеширует токен */
+  private async warmUpBannerImage(): Promise<void> {
+    const imagePath = join(process.cwd(), 'assets', 'max-default.png');
+
+    if (!existsSync(imagePath)) {
+      this.logger.warn(`Banner image not found at ${imagePath} — messages will be sent without image`);
       return;
     }
 
-    const webhookUrl = `${baseUrl.replace(/\/$/, '')}/max/webhook`;
-    this.logger.log(`Registering MAX webhook: ${webhookUrl}`);
+    try {
+      const buffer = readFileSync(imagePath);
+      this.logger.log('Uploading banner image to MAX API...');
+      const token = await this.maxApi.uploadImage(buffer, 'max-default.png');
 
-    const ok = await this.maxApi.registerWebhook(
-      webhookUrl,
-      webhookSecret || undefined,
-    );
-
-    if (ok) {
-      this.logger.log('MAX webhook registered successfully');
-    } else {
-      this.logger.warn('MAX webhook registration returned failure (check URL/token)');
+      if (token) {
+        this.cachedImageToken = token;
+        this.logger.log('Banner image uploaded and token cached');
+      } else {
+        this.logger.warn('Banner image upload returned no token — messages will be sent without image');
+      }
+    } catch (err: unknown) {
+      this.logger.error(`Failed to upload banner image: ${(err as Error)?.message}`);
     }
   }
 
@@ -92,7 +119,7 @@ export class MaxBotService implements OnModuleInit {
       }
     }
 
-    const body = this.pages.buildMainMenu(userId, userName);
+    const body = this.pages.buildMainMenu(userId, userName, this.cachedImageToken);
     await this.maxApi.sendMessage(userId, body);
   }
 
@@ -107,13 +134,13 @@ export class MaxBotService implements OnModuleInit {
     const text = (msg.body?.text ?? '').trim();
 
     if (text === '/start' || text === 'start' || text === 'Начать') {
-      const body = this.pages.buildMainMenu(userId, msg.sender.name);
+      const body = this.pages.buildMainMenu(userId, msg.sender.name, this.cachedImageToken);
       await this.maxApi.sendMessage(userId, body);
       return;
     }
 
     // Любое другое сообщение → главное меню
-    const body = this.pages.buildMainMenu(userId, msg.sender.name);
+    const body = this.pages.buildMainMenu(userId, msg.sender.name, this.cachedImageToken);
     await this.maxApi.sendMessage(userId, body);
   }
 
@@ -170,7 +197,7 @@ export class MaxBotService implements OnModuleInit {
   // ─── Handlers ───
 
   private async showMainMenu(userId: number, userName?: string): Promise<void> {
-    const body = this.pages.buildMainMenu(userId, userName);
+    const body = this.pages.buildMainMenu(userId, userName, this.cachedImageToken);
     await this.maxApi.sendMessage(userId, body);
   }
 
