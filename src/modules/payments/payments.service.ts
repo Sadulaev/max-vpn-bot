@@ -45,7 +45,7 @@ export class PaymentsService {
 
     const session = this.paymentRepository.create({
       invId,
-      telegramId: dto.telegramId,
+      maxId: dto.maxId,
       period: dto.period,
       amount: dto.amount,
       status: 'pending',
@@ -57,7 +57,7 @@ export class PaymentsService {
     });
 
     const saved = await this.paymentRepository.save(session);
-    this.logger.log(`Created payment session: ${saved.id} for user ${dto.telegramId}`);
+    this.logger.log(`Created payment session: ${saved.id} for user ${dto.maxId}`);
 
     return saved;
   }

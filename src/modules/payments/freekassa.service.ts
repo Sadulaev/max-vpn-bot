@@ -7,10 +7,10 @@ export interface FreekassaPaymentParams {
   invId: string;
   amount: number;
   description?: string;
-  /** Email плательщика. Если не указан — подставляется telegramId@telegram.org */
+  /** Email плательщика. Если не указан — подставляется noreply@max-vpn.tech */
   email?: string;
-  /** Telegram ID плательщика — для формирования email-заглушки */
-  telegramId?: string;
+  /** max ID плательщика — для формирования email-заглушки */
+  maxId?: string;
 }
 
 export interface FreekassaPaymentResult {
@@ -49,9 +49,9 @@ export class FreekassaService {
    * POST https://api.fk.life/v1/orders/create
    */
   async generatePaymentUrl(params: FreekassaPaymentParams): Promise<FreekassaPaymentResult> {
-    const { invId, amount, email, telegramId } = params;
+    const { invId, amount, email, maxId } = params;
     const amountStr = amount.toFixed(2);
-    const effectiveEmail = email || (telegramId ? `${telegramId}@telegram.org` : `noreply@max-vpn.tech`);
+    const effectiveEmail = email || (maxId ? `${maxId}@max-vpn.tech` : `noreply@max-vpn.tech`);
     const nonce = Date.now();
 
     const payload: Record<string, any> = {

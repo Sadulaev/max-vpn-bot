@@ -2,7 +2,6 @@
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { PaymentSession } from '@database/entities';
 import { SubscriptionsModule } from '@modules/subscriptions';
-import { UserBotModule } from '@modules/bot';
 import { ReferralModule } from '@modules/referral/referral.module';
 import { MaxApiModule } from '@modules/max-api';
 import { PaymentsService } from './payments.service';
@@ -14,7 +13,6 @@ import { PaymentNotificationService } from './payment-notification.service';
   imports: [
     TypeOrmModule.forFeature([PaymentSession]),
     SubscriptionsModule,
-    forwardRef(() => UserBotModule),
     ReferralModule,
     MaxApiModule,
   ],

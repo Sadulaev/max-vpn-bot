@@ -32,7 +32,7 @@ export interface RemnawaveUserResponse {
   trafficLimitBytes: number;
   trafficLimitStrategy: string;
   expireAt: string;
-  telegramId: number | null;
+  maxId: number | null;
   email: string | null;
   description: string | null;
   tag: string | null;
@@ -80,7 +80,7 @@ export interface RemnawaveUserCreate {
   trafficLimitStrategy?: 'NO_RESET' | 'DAY' | 'WEEK' | 'MONTH' | 'MONTH_ROLLING';
   description?: string;
   tag?: string | null;
-  telegramId?: number | null;
+  maxId?: number | null;
   activeInternalSquads?: string[];
   hwidDeviceLimit?: number | null;
 }
@@ -96,7 +96,7 @@ export interface RemnawaveUserUpdate {
   expireAt?: string;
   description?: string | null;
   tag?: string | null;
-  telegramId?: number | null;
+  maxId?: number | null;
   activeInternalSquads?: string[];
   hwidDeviceLimit?: number | null;
 }

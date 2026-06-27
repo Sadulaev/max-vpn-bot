@@ -1,6 +1,6 @@
 /**
  * Short self-contained access token.
- * Format: base62(5_bytes_telegramId + 4_bytes_hmac) → 13 chars
+ * Format: base62(5_bytes_maxId + 4_bytes_hmac) → 13 chars
  * No DB lookup required for validation.
  */
 import { createHmac, timingSafeEqual } from 'crypto';
@@ -33,29 +33,29 @@ function decodeBase62(s: string): Buffer {
 }
 
 /**
- * Generate a 13-char token for the given Telegram user ID.
+ * Generate a 13-char token for the given Max user ID.
  * secret should be the bot token or app secret.
  */
-export function generateAccessToken(telegramId: string, secret: string): string {
-  const id = BigInt(telegramId);
+export function generateAccessToken(maxId: string, secret: string): string {
+  const id = BigInt(maxId);
   const idHex = id.toString(16).padStart(10, '0');
   const idBytes = Buffer.from(idHex, 'hex');                              // 5 bytes
-  const sig = createHmac('sha256', secret).update(telegramId).digest().slice(0, 4); // 4 bytes
+  const sig = createHmac('sha256', secret).update(maxId).digest().slice(0, 4); // 4 bytes
   return encodeBase62(Buffer.concat([idBytes, sig]));
 }
 
 /**
- * Verify a token and return the telegramId string, or null if invalid.
+ * Verify a token and return the maxId string, or null if invalid.
  */
 export function verifyAccessToken(token: string, secret: string): string | null {
   try {
     if (!token || token.length !== TOKEN_LEN) return null;
     const buf = decodeBase62(token);
     if (buf.length < TOKEN_BYTES) return null;
-    const telegramId = BigInt('0x' + buf.slice(0, 5).toString('hex')).toString();
-    const expectedSig = createHmac('sha256', secret).update(telegramId).digest().slice(0, 4);
+    const maxId = BigInt('0x' + buf.slice(0, 5).toString('hex')).toString();
+    const expectedSig = createHmac('sha256', secret).update(maxId).digest().slice(0, 4);
     if (!timingSafeEqual(buf.slice(5, 9), expectedSig)) return null;
-    return telegramId;
+    return maxId;
   } catch {
     return null;
   }

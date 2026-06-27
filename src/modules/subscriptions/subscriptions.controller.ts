@@ -19,7 +19,6 @@ import { ApiTags, ApiOperation, ApiParam, ApiResponse, ApiBody, ApiQuery, ApiBea
 import { Response } from 'express';
 import { SubscriptionsService } from './subscriptions.service';
 import { CreateSubscriptionDto, SendMessageDto } from './dto';
-import { UserBotService } from '@modules/bot/services/user-bot.service';
 import { SubscriptionSource } from '@database/entities';
 import { JwtAuthGuard } from '@modules/auth';
 
@@ -33,8 +32,6 @@ export class SubscriptionsController {
 
   constructor(
     private readonly subscriptionsService: SubscriptionsService,
-    @Inject(forwardRef(() => UserBotService))
-    private readonly userBotService: UserBotService,
   ) {}
 
   @Get()
@@ -69,11 +66,11 @@ export class SubscriptionsController {
       return dt.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' });
     };
 
-    const header = 'ID,Тг ID,Дата создания,Количество дней\n';
+    const header = 'ID,Max ID,Дата создания,Количество дней\n';
     const rows = subs.map((s) =>
       [
         s.id,
-        s.telegramId ?? '',
+        s.maxId ?? '',
         fmtDate(s.createdAt),
         s.days,
       ]
@@ -87,10 +84,10 @@ export class SubscriptionsController {
     return res!.send('\uFEFF' + csv);
   }
 
-  @Get('export-unique-telegram-ids')
-  @ApiOperation({ summary: 'Экспорт уникальных Telegram ID' })
+  @Get('export-unique-max-ids')
+  @ApiOperation({ summary: 'Экспорт уникальных Max ID' })
   @ApiResponse({ status: 200, description: 'CSV файл' })
-  async exportUniqueTelegramIds(@Res() res?: Response) {
+  async exportUniqueMaxIds(@Res() res?: Response) {
     const subs = await this.subscriptionsService.search({});
 
     const fmtDate = (d: any) => {
@@ -100,21 +97,21 @@ export class SubscriptionsController {
       return dt.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' });
     };
 
-    // Находим первую (самую раннюю) подписку для каждого telegram ID
-    const uniqueMap = new Map<string, { id: string; telegramId: string; createdAt: any }>();
+    // Находим первую (самую раннюю) подписку для каждого Max ID
+    const uniqueMap = new Map<string, { id: string; maxId: string; createdAt: any }>();
     // subs отсортированы DESC, берём последнюю (самую раннюю)
     for (const s of subs) {
-      if (!s.telegramId) continue;
-      if (!uniqueMap.has(s.telegramId)) {
-        uniqueMap.set(s.telegramId, { id: s.id, telegramId: s.telegramId, createdAt: s.createdAt });
+      if (!s.maxId) continue;
+      if (!uniqueMap.has(s.maxId)) {
+        uniqueMap.set(s.maxId, { id: s.id, maxId: s.maxId, createdAt: s.createdAt });
       }
     }
 
-    const header = 'ID,Тг ID,Дата создания\n';
+    const header = 'ID,Max ID,Дата создания\n';
     const rows = Array.from(uniqueMap.values()).map((u) =>
       [
         u.id,
-        u.telegramId,
+        u.maxId,
         fmtDate(u.createdAt),
       ]
         .map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`)
@@ -123,7 +120,7 @@ export class SubscriptionsController {
 
     const csv = header + rows.join('\n');
     res!.setHeader('Content-Type', 'text/csv; charset=utf-8');
-    res!.setHeader('Content-Disposition', `attachment; filename="unique-telegram-ids-${new Date().toISOString().slice(0, 10)}.csv"`);
+    res!.setHeader('Content-Disposition', `attachment; filename="unique-max-ids-${new Date().toISOString().slice(0, 10)}.csv"`);
     return res!.send('\uFEFF' + csv);
   }
 
@@ -180,7 +177,7 @@ export class SubscriptionsController {
   @UseInterceptors(FileInterceptor('photo'))
   @ApiOperation({ 
     summary: 'Отправить сообщение пользователям', 
-    description: 'Отправляет сообщение через Telegram бота. Если указан telegramId - отправляет одному пользователю, иначе - рассылка всем пользователям из БД. Опционально можно приложить фото (multipart/form-data).' 
+    description: 'Отправляет сообщение через MAX бота. Если указан maxId - отправляет одному пользователю, иначе - рассылка всем пользователям из БД. Опционально можно приложить фото (multipart/form-data).' 
   })
   @ApiResponse({ 
     status: 200, 
@@ -194,40 +191,10 @@ export class SubscriptionsController {
   })
   async sendMessage(
     @Body('message') message: string,
-    @Body('telegramId') telegramId: string | undefined,
+    @Body('maxId') maxId: string | undefined,
     @UploadedFile() photo?: { buffer: Buffer; originalname: string; mimetype: string },
   ) {
-    const photoBuffer = photo?.buffer ?? undefined;
-
-    // Если рассылка массовая (без telegramId) - запускаем в фоне
-    if (!telegramId) {
-      this.logger.log('Starting message broadcast to all users (background process)');
-      
-      this.userBotService.sendMessage(message, undefined, photoBuffer)
-        .then(result => {
-          this.logger.log(
-            `Broadcast completed: ${result.sent} sent, ${result.failed} failed. ` +
-            `Errors: ${result.errors.length > 0 ? result.errors.slice(0, 5).join('; ') : 'none'}`
-          );
-        })
-        .catch(err => {
-          this.logger.error('Broadcast failed:', err);
-        });
-      
-      return {
-        success: true,
-        message: 'Message broadcasting started in background. Check server logs for results.',
-      };
-    }
-
-    // Для одиночного сообщения - отправляем синхронно
-    this.logger.log(`Sending message to user ${telegramId}`);
-    const result = await this.userBotService.sendMessage(message, telegramId, photoBuffer);
-    
-    return {
-      success: true,
-      data: result,
-    };
+    // TODO: реализовать массовую рассылку через очередь (Bull) для всех пользователей, если max id не указан
   }
 
   @Get('unsynced')

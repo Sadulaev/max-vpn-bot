@@ -11,7 +11,7 @@ export type PaymentStatus = 'pending' | 'paid' | 'failed' | 'expired';
 @Entity('payment_sessions')
 @Index('idx_payment_status', ['status'])
 @Index('idx_payment_expires_at', ['expiresAt'])
-@Index('idx_payment_telegram_id', ['telegramId'])
+@Index('idx_payment_max_id', ['maxId'])
 export class PaymentSession {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
@@ -20,7 +20,7 @@ export class PaymentSession {
   invId!: string;
 
   @Column({ type: 'bigint' })
-  telegramId!: string;
+  maxId!: string;
 
   @Column({ type: 'varchar', length: 16, default: 'pending' })
   status!: PaymentStatus;
@@ -45,7 +45,7 @@ export class PaymentSession {
   @Column({ type: 'boolean', default: false })
   forceNewSubscription: boolean = false;
 
-  /** Telegram ID реферера (кто пригласил покупателя) */
+  /** max ID реферера (кто пригласил покупателя) */
   @Column({ type: 'varchar', length: 255, nullable: true })
   referrerId: string | null = null;
 

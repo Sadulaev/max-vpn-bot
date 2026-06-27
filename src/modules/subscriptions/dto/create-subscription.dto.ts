@@ -3,14 +3,14 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { SubscriptionSource } from '@database/entities';
 
 export class CreateSubscriptionDto {
-  /** Telegram ID клиента */
+  /** Max ID клиента */
   @ApiPropertyOptional({ 
     example: '123456789', 
-    description: 'Telegram ID клиента (опционально)' 
+    description: 'Max ID клиента (опционально)' 
   })
   @IsString()
   @IsOptional()
-  telegramId?: string;
+  maxId?: string;
 
   /** Период подписки в днях */
   @ApiProperty({ example: 30, description: 'Период подписки в днях (1-365)', minimum: 1, maximum: 365 })
@@ -67,8 +67,8 @@ export class CreateSubscriptionDto {
   @IsOptional()
   inboundsConfig?: string;
 
-  /** Telegram ID пригласившего пользователя (реферер) */
-  @ApiPropertyOptional({ example: '987654321', description: 'Telegram ID реферера' })
+  /** MAX ID пригласившего пользователя (реферер) */
+  @ApiPropertyOptional({ example: '987654321', description: 'MAX ID реферера' })
   @IsString()
   @IsOptional()
   referrerId?: string;

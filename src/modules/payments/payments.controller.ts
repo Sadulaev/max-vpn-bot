@@ -17,12 +17,10 @@ import { PaymentsService } from './payments.service';
 import { FreekassaService } from './freekassa.service';
 import { PaymentNotificationService } from './payment-notification.service';
 import { SubscriptionsService } from '@modules/subscriptions';
-import { UserBotService } from '@modules/bot/services/user-bot.service';
 import { ReferralService } from '@modules/referral/referral.service';
 import { SubscriptionSource } from '@database/entities';
 import { GetPaidSessionsDto } from './dto/get-paid-sessions.dto';
 import { GetRandomPaidSessionsDto } from './dto/get-random-paid-sessions.dto';
-import { SendTelegramMessageDto } from './dto/send-telegram-message.dto';
 import { JwtAuthGuard, Public } from '@modules/auth';
 
 interface FreekassaWebhookBody {
@@ -52,8 +50,6 @@ export class PaymentsController {
     private readonly notificationService: PaymentNotificationService,
     @Inject(forwardRef(() => SubscriptionsService))
     private readonly subscriptionsService: SubscriptionsService,
-    @Inject(forwardRef(() => UserBotService))
-    private readonly userBotService: UserBotService,
     private readonly referralService: ReferralService,
   ) {}
 
@@ -126,8 +122,6 @@ export class PaymentsController {
       }
     }
 
-    const isAntiThrottling = planMeta.planType === 'anti-throttling' || (planMeta.dataLimitGB ?? 0) > 0;
-
     // ── Покупка слотов устройств ──
     if (planMeta.type === 'device_slots') {
       if (!session.subscriptionId) {
@@ -144,29 +138,12 @@ export class PaymentsController {
       }
       await this.paymentsService.markPaid(session.invId);
       await this.notificationService.notifyDeviceSlotsSuccess(
-        session.telegramId,
+        session.maxId,
         planMeta.slotsCount,
         planMeta.newLimit,
       );
       // Канальное уведомление о покупке слотов
-      try {
-        const bot = this.userBotService.getBot();
-        const now = new Date();
-        const formattedDate = now.toLocaleString('ru-RU', {
-          day: '2-digit', month: '2-digit', year: 'numeric',
-          hour: '2-digit', minute: '2-digit',
-        });
-        const channelMsg = [
-          '💻 <b>Покупка слотов устройств!</b>\n',
-          `🆔 <b>Telegram ID:</b> <code>${session.telegramId}</code>`,
-          `📦 <b>Пакет:</b> ${planMeta.label ?? planMeta.slotsCount + ' слот(ов)'}`,
-          `💵 <b>Цена:</b> ${session.amount} ₽`,
-          `📅 <b>Дата:</b> ${formattedDate}`,
-        ].join('\n');
-        await this.userBotService.sendNotificationToChannel(channelMsg, 'HTML');
-      } catch (e) {
-        this.logger.error('Failed to send device slots channel notification:', e);
-      }
+      // TODO: добавить уведомление в канал о покупке слотов устройств
       return res.send('YES');
     }
 
@@ -178,7 +155,7 @@ export class PaymentsController {
         planMeta.dataLimitGB ?? 0,
       );
       this.logger.log(
-        `Extended specific subscription ${session.subscriptionId} for user ${session.telegramId} by ${session.period * 30} days`
+        `Extended specific subscription ${session.subscriptionId} for user ${session.maxId} by ${session.period * 30} days`
       );
       subscriptionUrl = await this.subscriptionsService.getSubscriptionUrl(extended.id);
       subPageUrl = await this.subscriptionsService.getSubPageUrl(extended.id);
@@ -186,7 +163,7 @@ export class PaymentsController {
     } else if (session.forceNewSubscription) {
       // Mini app: создать новую подписку (не продлевать активную)
       result = await this.subscriptionsService.createSubscription({
-        telegramId: session.telegramId,
+        maxId: session.maxId,
         days: session.period * 30,
         source: SubscriptionSource.BOT,
         dataLimitGB: planMeta.dataLimitGB ?? 0,
@@ -198,47 +175,11 @@ export class PaymentsController {
       subscriptionUrl = result.subscriptionUrl;
       subPageUrl = result.subPageUrl;
       this.logger.log(
-        `Created new subscription (${planMeta.planType ?? 'standard'}) for user ${session.telegramId}, ` +
+        `Created new subscription (${planMeta.planType ?? 'standard'}) for user ${session.maxId}, ` +
         `dataLimit: ${planMeta.dataLimitGB ?? 0} GB`
       );
     } else {
-      // Bot flow: продлить активную подписку того же типа или создать новую
-      const isAntiThrottlingBot =
-        planMeta.planType === 'anti-throttling' || (planMeta.dataLimitGB ?? 0) > 0;
-
-      const allActives = await this.subscriptionsService.getActiveSubscriptionsByTelegramId(
-        session.telegramId,
-      );
-      const activeSubscription =
-        allActives.find((s) => s.isAntiThrottling === isAntiThrottlingBot) ?? null;
-
-      if (activeSubscription) {
-        const extended = await this.subscriptionsService.extendSubscription(
-          activeSubscription.id,
-          session.period * 30,
-          planMeta.dataLimitGB ?? 0,
-        );
-        this.logger.log(
-          `Extended subscription ${activeSubscription.id} for user ${session.telegramId} by ${session.period * 30} days`,
-        );
-        subscriptionUrl = await this.subscriptionsService.getSubscriptionUrl(extended.id);
-        subPageUrl = await this.subscriptionsService.getSubPageUrl(extended.id);
-        result = { subscriptionUrl };
-      } else {
-        result = await this.subscriptionsService.createSubscription({
-          telegramId: session.telegramId,
-          days: session.period * 30,
-          source: SubscriptionSource.BOT,
-          dataLimitGB: planMeta.dataLimitGB ?? 0,
-          proxiesConfig: planMeta.proxiesConfig,
-          inboundsConfig: planMeta.inboundsConfig,
-          note: planMeta.subscriptionName,
-          isAdditional: planMeta.isMain === false,
-        });
-        subscriptionUrl = result.subscriptionUrl;
-        subPageUrl = result.subPageUrl;
-        this.logger.log(`Created new subscription for user ${session.telegramId}`);
-      }
+      // TODO: продлить активную подписку того же типа или создать новую
     }
 
     // 5. Помечаем платеж как оплаченный
@@ -246,35 +187,16 @@ export class PaymentsController {
 
     // 6. Уведомляем пользователя
     await this.notificationService.notifyPaymentSuccess(
-      session.telegramId,
+      session.maxId,
       subscriptionUrl,
       session.period,
-      isAntiThrottling,
       subPageUrl,
     );
 
     // 8. Отправляем уведомление в канал о покупке
     try {
       // Получаем информацию о пользователе
-      const bot = this.userBotService.getBot();
-      let username = 'Unknown';
-      let firstName = '';
-      
-      try {
-        const chat = await bot.telegram.getChat(session.telegramId);
-        if ('username' in chat && chat.username) {
-          username = `@${chat.username}`;
-        } else if ('first_name' in chat) {
-          firstName = chat.first_name;
-          username = firstName;
-          if ('last_name' in chat && chat.last_name) {
-            username += ` ${chat.last_name}`;
-          }
-        }
-      } catch (error) {
-        this.logger.warn(`Could not fetch user info for ${session.telegramId}:`, error);
-      }
-
+      // TODO: добавить получение username
       const now = new Date();
       const formattedDate = now.toLocaleString('ru-RU', {
         day: '2-digit',
@@ -287,17 +209,18 @@ export class PaymentsController {
       const periodText = session.period === 1 ? '1 месяц' : `${session.period} месяцев`;
       const tariffText = planMeta.label ?? periodText;
 
+      // TODO: добавить username в сообщение, если он есть
       const message = [
         '💰 <b>Новая покупка!</b>\n',
-        `👤 <b>Пользователь:</b> ${username}`,
-        `🆔 <b>Telegram ID:</b> <code>${session.telegramId}</code>`,
+        `👤 <b>Пользователь:</b>`, 
+        `🆔 <b>Max ID:</b> <code>${session.maxId}</code>`,
         `📦 <b>Тариф:</b> ${tariffText}`,
         `💵 <b>Цена:</b> ${session.amount} ₽`,
         `📅 <b>Дата:</b> ${formattedDate}`,
       ].join('\n');
 
-      await this.userBotService.sendNotificationToChannel(message, 'HTML');
-      this.logger.log(`Purchase notification sent to channel for user ${session.telegramId}`);
+      // TODO: добавить отправку уведомления в канал через ТГ
+      this.logger.log(`Purchase notification sent to channel for user ${session.maxId}`);
     } catch (error) {
       this.logger.error('Failed to send purchase notification to channel:', error);
       // Не прерываем обработку платежа если уведомление не отправилось
@@ -309,7 +232,7 @@ export class PaymentsController {
     if (session.referrerId && !session.subscriptionId && planMeta.isMain !== false) {
       try {
         await this.referralService.rewardReferrer(session.referrerId);
-        this.logger.log(`Referral reward issued to ${session.referrerId} for user ${session.telegramId}`);
+        this.logger.log(`Referral reward issued to ${session.referrerId} for user ${session.maxId}`);
       } catch (error) {
         this.logger.error('Failed to process referral reward:', error);
       }
@@ -381,7 +304,7 @@ export class PaymentsController {
       [
         s.id,
         s.invId,
-        s.telegramId,
+        s.maxId ,
         statusLabel[s.status] ?? s.status,
         fmtDate(s.createdAt),
       ]
@@ -395,37 +318,12 @@ export class PaymentsController {
     return res.send('\uFEFF' + csv);
   }
 
-  @Post('send-telegram-message')
-  @ApiOperation({ summary: 'Отправить сообщение пользователю по Telegram ID' })
+  @Post('send-message')
+  @ApiOperation({ summary: 'Отправить сообщение пользователю в MAX' })
   @ApiResponse({ status: 200, description: 'Сообщение отправлено' })
   @ApiResponse({ status: 400, description: 'Ошибка отправки сообщения' })
-  async sendTelegramMessage(@Body() dto: SendTelegramMessageDto) {
-    try {
-      const result = await this.userBotService.sendMessage(
-        dto.message,
-        dto.telegramId,
-      );
-
-      if (result.sent > 0) {
-        this.logger.log(`Telegram message sent to ${dto.telegramId}`);
-        return {
-          success: true,
-          message: 'Сообщение успешно отправлено',
-        };
-      } else {
-        this.logger.error(`Failed to send message to ${dto.telegramId}`);
-        return {
-          success: false,
-          message: 'Не удалось отправить сообщение',
-        };
-      }
-    } catch (error) {
-      this.logger.error(`Error sending telegram message to ${dto.telegramId}:`, error);
-      return {
-        success: false,
-        message: 'Ошибка при отправке сообщения',
-      };
-    }
+  async sendMaxMessage(@Body() dto: any) {
+    //TODO: реализовать отправку сообщения пользователю через MAX API
   }
 }
 

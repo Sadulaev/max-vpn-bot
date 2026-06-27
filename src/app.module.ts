@@ -9,7 +9,6 @@ import { AuthModule } from '@modules/auth';
 import { PaymentsModule } from '@modules/payments';
 import { PlansModule } from '@modules/plans';
 import { DeviceSlotPlansModule } from '@modules/device-slot-plans/device-slot-plans.module';
-import { UserBotModule } from '@modules/bot/user-bot.module';
 import { RemnawaveApiModule } from '@modules/remnawave-api';
 import { SubscriptionsModule } from '@modules/subscriptions';
 import { TasksModule } from '@modules/tasks';
@@ -54,7 +53,6 @@ import { TypeOrmModule } from '@nestjs/typeorm';
     PaymentsModule,
     PlansModule,
     DeviceSlotPlansModule,
-    UserBotModule,
     TasksModule,
     ReferralModule,
     BotPagesModule,

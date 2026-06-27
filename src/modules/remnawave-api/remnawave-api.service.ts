@@ -50,8 +50,8 @@ export class RemnawaveApiService implements OnModuleInit {
   }
 
   /** UUID сквада для данного типа подписки */
-  getSquadUuid(isAntiThrottling: boolean): string {
-    return isAntiThrottling ? this.antiThrottlingSquadUuid : this.standardSquadUuid;
+  getSquadUuid(): string {
+    return this.standardSquadUuid;
   }
 
   // ─── Auth ───
@@ -303,7 +303,7 @@ export class RemnawaveApiService implements OnModuleInit {
   }
 
   /** Тег для типа подписки */
-  getTag(isAntiThrottling: boolean): string {
-    return isAntiThrottling ? 'ANTI_THROTTLE' : 'STANDARD';
+  getTag(): string {
+    return 'STANDARD';
   }
 }

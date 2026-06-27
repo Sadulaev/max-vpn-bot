@@ -10,7 +10,7 @@ import {
 @Entity('users')
 export class User {
   @PrimaryColumn({ type: 'bigint' })
-  telegramId!: string;
+  maxId!: string;
 
   @Column({ type: 'varchar', length: 255, nullable: true })
   firstName: string | null = null;

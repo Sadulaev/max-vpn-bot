@@ -1,5 +1,5 @@
 export interface CreatePaymentDto {
-  telegramId: string;
+  maxId: string;
   firstName?: string;
   username?: string;
   period: number;
@@ -9,7 +9,7 @@ export interface CreatePaymentDto {
   subscriptionId?: string;
   /** Создать новую подписку (не продлевать активную) — для mini app */
   forceNewSubscription?: boolean;
-  /** Telegram ID реферера */
+  /** MAX ID реферера */
   referrerId?: string;
   /** Метаданные плана (JSON string) */
   planMetadata?: string;

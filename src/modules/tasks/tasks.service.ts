@@ -4,7 +4,6 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { SubscriptionsService } from '@modules/subscriptions';
 import { PaymentsService } from '@modules/payments';
-import { UserBotService } from '@modules/bot/services/user-bot.service';
 import { Subscription } from '@database/entities';
 
 @Injectable()
@@ -16,8 +15,6 @@ export class TasksService {
     private readonly paymentsService: PaymentsService,
     @InjectRepository(Subscription)
     private readonly subscriptionRepo: Repository<Subscription>,
-    @Inject(forwardRef(() => UserBotService))
-    private readonly userBotService: UserBotService,
   ) {}
 
   /**
@@ -56,7 +53,7 @@ export class TasksService {
       let failed = 0;
 
       for (const sub of allSubs) {
-        if (!sub.telegramId || !sub.username) continue;
+        if (!sub.maxId || !sub.username) continue;
 
         const ru = remnawaveMap.get(sub.username);
         if (!ru || ru.status !== 'ACTIVE') continue;
@@ -65,12 +62,9 @@ export class TasksService {
         const expireMs = new Date(ru.expireAt).getTime();
         if (expireMs - nowMs <= twoDaysMs && expireMs > nowMs) {
           const endDate = new Date(ru.expireAt);
-          const success = await this.userBotService.notifySubscriptionExpiringSoon(
-            sub.telegramId,
-            endDate,
-          );
-          if (success) notified++;
-          else failed++;
+          // TODO: Отправка уведомления пользователю о скором окончании подписки.
+          // if (success) notified++;
+          // else failed++;
 
           await new Promise((r) => setTimeout(r, 100));
         }

@@ -5,10 +5,10 @@ export class SendMessageDto {
   @ApiProperty({ description: 'Текст сообщения для отправки' })
   @IsString()
   @IsNotEmpty()
-  message: string;
+  message?: string;
 
-  @ApiPropertyOptional({ description: 'Telegram ID для отправки сообщения одному пользователю (опционально, если не указан - всем)' })
+  @ApiPropertyOptional({ description: 'Max ID для отправки сообщения одному пользователю (опционально, если не указан - всем)' })
   @IsOptional()
   @IsString()
-  telegramId?: string;
+  maxId?: string;
 }

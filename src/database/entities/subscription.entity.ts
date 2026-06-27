@@ -31,7 +31,7 @@ export class Subscription {
   shortUuid: string | null = null;
 
   @Column({ type: 'varchar', length: 255, nullable: true })
-  telegramId: string | null = null;
+  maxId: string | null = null;
 
   /** Пользовательское название подписки */
   @Column({ type: 'varchar', length: 30, nullable: true, default: null })
@@ -48,15 +48,11 @@ export class Subscription {
   @Column({ type: 'int' })
   days!: number;
 
-  /** Тип подписки: антиглушилка (true) или стандарт (false) */
-  @Column({ type: 'boolean', default: false })
-  isAntiThrottling!: boolean;
-
   /** Дополнительная подписка (не является основной Базовый/Антиглушилка) */
   @Column({ type: 'boolean', default: false })
   isAdditional: boolean = false;
 
-  /** Telegram ID реферера */
+  /** Max ID реферера */
   @Column({ type: 'varchar', length: 255, nullable: true })
   referrerId: string | null = null;
 

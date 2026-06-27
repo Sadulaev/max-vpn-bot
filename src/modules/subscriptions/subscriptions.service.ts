@@ -40,14 +40,14 @@ export class SubscriptionsService {
     return subscriptionId.replace(/-/g, '');
   }
 
-  private async findReusableSubscription(telegramId?: string): Promise<Subscription | null> {
-    if (!telegramId) {
+  private async findReusableSubscription(maxId?: string): Promise<Subscription | null> {
+    if (!maxId) {
       return null;
     }
 
     return this.subscriptionRepo.findOne({
       where: {
-        telegramId,
+        maxId: maxId,
       },
       order: { createdAt: 'DESC' },
     });
@@ -55,12 +55,8 @@ export class SubscriptionsService {
 
   private async syncSubscriptionPlan(
     subscription: Subscription,
-    dataLimitGB?: number,
     note?: string,
   ): Promise<void> {
-    const isAntiThrottling = !!(dataLimitGB && dataLimitGB > 0);
-
-    subscription.isAntiThrottling = isAntiThrottling;
     if (note) {
       subscription.name = note.slice(0, 30);
     }
@@ -71,8 +67,8 @@ export class SubscriptionsService {
       return;
     }
 
-    const squadUuid = this.remnawaveApi.getSquadUuid(isAntiThrottling);
-    const tag = this.remnawaveApi.getTag(isAntiThrottling);
+    const squadUuid = this.remnawaveApi.getSquadUuid();
+    const tag = this.remnawaveApi.getTag();
     const updatePayload: Parameters<typeof this.remnawaveApi.updateUser>[0] = {
       uuid: remnawaveUser.uuid,
       status: 'ACTIVE',
@@ -80,20 +76,12 @@ export class SubscriptionsService {
       activeInternalSquads: squadUuid ? [squadUuid] : [],
     };
 
-    if (isAntiThrottling) {
-      updatePayload.trafficLimitBytes = dataLimitGB! * 1024 * 1024 * 1024;
-      updatePayload.trafficLimitStrategy = 'NO_RESET';
-      updatePayload.expireAt = new Date(
-        Date.now() + 365 * 24 * 60 * 60 * 1000,
-      ).toISOString();
-    } else {
-      const expireAt = new Date(subscription.startDate);
-      expireAt.setDate(expireAt.getDate() + subscription.days);
+    const expireAt = new Date(subscription.startDate);
+    expireAt.setDate(expireAt.getDate() + subscription.days);
 
-      updatePayload.trafficLimitBytes = 0;
-      updatePayload.trafficLimitStrategy = 'NO_RESET';
-      updatePayload.expireAt = expireAt.toISOString();
-    }
+    updatePayload.trafficLimitBytes = 0;
+    updatePayload.trafficLimitStrategy = 'NO_RESET';
+    updatePayload.expireAt = expireAt.toISOString();
 
     await this.remnawaveApi.updateUser(updatePayload);
 
@@ -123,21 +111,13 @@ export class SubscriptionsService {
     shortUuid: string | null;
     subPageUrl: string | null;
   }> {
-    const reusableSubscription = await this.findReusableSubscription(dto.telegramId);
+    const reusableSubscription = await this.findReusableSubscription(dto.maxId);
 
     if (reusableSubscription) {
-      const requestedIsAntiThrottling = !!(dto.dataLimitGB && dto.dataLimitGB > 0);
-
       reusableSubscription.source = dto.source ?? reusableSubscription.source;
       reusableSubscription.referrerId = dto.referrerId ?? reusableSubscription.referrerId;
 
-      if (reusableSubscription.isAntiThrottling !== requestedIsAntiThrottling) {
-        await this.syncSubscriptionPlan(
-          reusableSubscription,
-          dto.dataLimitGB,
-          dto.note,
-        );
-      } else if (dto.note) {
+      if (dto.note) {
         reusableSubscription.name = dto.note.slice(0, 30);
         await this.subscriptionRepo.save(reusableSubscription);
       } else {
@@ -163,15 +143,12 @@ export class SubscriptionsService {
     const endDate = new Date();
     endDate.setDate(endDate.getDate() + dto.days);
 
-    const isAntiThrottling = !!(dto.dataLimitGB && dto.dataLimitGB > 0);
-
     const subscription = this.subscriptionRepo.create({
       username: '',
-      telegramId: dto.telegramId ?? null,
+      maxId: dto.maxId ?? null,
       source: dto.source ?? SubscriptionSource.ADMIN,
       days: dto.days,
       startDate,
-      isAntiThrottling,
       isAdditional: false,
       referrerId: dto.referrerId ?? null,
       name: dto.note ? dto.note.slice(0, 30) : null,
@@ -191,9 +168,9 @@ export class SubscriptionsService {
       ? dto.dataLimitGB * 1024 * 1024 * 1024
       : 0;
 
-    const squadUuid = this.remnawaveApi.getSquadUuid(isAntiThrottling);
-    const tag = this.remnawaveApi.getTag(isAntiThrottling);
-    const telegramIdNum = dto.telegramId ? parseInt(dto.telegramId, 10) : null;
+    const squadUuid = this.remnawaveApi.getSquadUuid();
+    const tag = this.remnawaveApi.getTag();
+    const maxIdNum = dto.maxId ? parseInt(dto.maxId, 10) : null;
 
     const description = dto.note
       ? `${subscription.id} | ${dto.note}`
@@ -202,15 +179,13 @@ export class SubscriptionsService {
     try {
       const user = await this.remnawaveApi.createUser({
         username: panelUsername,
-        expireAt: isAntiThrottling
-          ? new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString() // 1 год для антиглушилки
-          : endDate.toISOString(),
+        expireAt: endDate.toISOString(),
         status: 'ACTIVE',
         trafficLimitBytes: dataLimitBytes,
         trafficLimitStrategy: 'NO_RESET',
         description,
         tag,
-        telegramId: telegramIdNum,
+        maxId: maxIdNum,
         activeInternalSquads: squadUuid ? [squadUuid] : [],
         hwidDeviceLimit: 5,
       });
@@ -270,7 +245,7 @@ export class SubscriptionsService {
 
     if (params.search) {
       query.andWhere(
-        '(subscription.username ILIKE :search OR subscription.telegramId::text ILIKE :search)',
+        '(subscription.username ILIKE :search OR subscription.maxId::text ILIKE :search)',
         { search: `%${params.search}%` },
       );
     }
@@ -328,14 +303,14 @@ export class SubscriptionsService {
     return map;
   }
 
-  /** Получить все уникальные Telegram ID из подписок */
-  async getUniqueTelegramIds(): Promise<string[]> {
+  /** Получить все уникальные MAX ID из подписок */
+  async getUniqueMaxIds(): Promise<string[]> {
     const result = await this.subscriptionRepo
       .createQueryBuilder('s')
-      .select('DISTINCT s.telegramId', 'telegramId')
-      .where('s.telegramId IS NOT NULL')
+      .select('DISTINCT s.maxId', 'maxId')
+      .where('s.maxId IS NOT NULL')
       .getRawMany();
-    return result.map((r) => r.telegramId);
+    return result.map((r) => r.maxId);
   }
 
   /** Получить данные одной подписки из Remnawave */
@@ -353,11 +328,11 @@ export class SubscriptionsService {
   }
 
   /**
-   * Найти активные подписки telegramId.
+   * Найти активные подписки maxId.
    * Проверяет статус напрямую в Remnawave.
    */
-  async getActiveSubscriptionsByTelegramId(telegramId: string): Promise<Subscription[]> {
-    const subs = await this.subscriptionRepo.find({ where: { telegramId }, order: { createdAt: 'DESC' } });
+  async getActiveSubscriptionsByMaxId(maxId: string): Promise<Subscription[]> {
+    const subs = await this.subscriptionRepo.find({ where: { maxId }, order: { createdAt: 'DESC' } });
 
     const results: Subscription[] = [];
     await Promise.all(
@@ -374,13 +349,13 @@ export class SubscriptionsService {
     return results;
   }
 
-  async getActiveSubscriptionByTelegramId(telegramId: string): Promise<Subscription | null> {
-    const actives = await this.getActiveSubscriptionsByTelegramId(telegramId);
+  async getActiveSubscriptionByMaxId(maxId: string): Promise<Subscription | null> {
+    const actives = await this.getActiveSubscriptionsByMaxId(maxId);
     return actives[0] ?? null;
   }
 
-  async getAllSubscriptionsByTelegramId(telegramId: string): Promise<Subscription[]> {
-    return this.subscriptionRepo.find({ where: { telegramId }, order: { createdAt: 'DESC' } });
+  async getAllSubscriptionsByMaxId(maxId: string): Promise<Subscription[]> {
+    return this.subscriptionRepo.find({ where: { maxId }, order: { createdAt: 'DESC' } });
   }
 
   /** URL подписки для V2Ray клиента */
@@ -442,19 +417,6 @@ export class SubscriptionsService {
 
     const ru = await this.getRemnawaveUser(subscriptionId);
     if (ru) {
-      if (subscription.isAntiThrottling && dataLimitGb && dataLimitGb > 0) {
-        // Антиглушилка: добавляем трафик
-        const currentLimit = ru.trafficLimitBytes ?? 0;
-        const addBytes = dataLimitGb * 1024 * 1024 * 1024;
-        await this.remnawaveApi.updateUser({
-          uuid: ru.uuid,
-          trafficLimitBytes: currentLimit + addBytes,
-          status: 'ACTIVE',
-        });
-        this.logger.log(
-          `Subscription ${subscriptionId} (anti-throttling) data limit extended by ${dataLimitGb} GB`,
-        );
-      } else {
         // Стандарт: продлеваем expire
         const currentExpire = ru.expireAt ? new Date(ru.expireAt) : null;
         const now = new Date();
@@ -469,18 +431,15 @@ export class SubscriptionsService {
         this.logger.log(
           `Subscription ${subscriptionId} extended by ${days} days — new expire ${newExpire.toISOString()}`,
         );
-      }
 
-      // Обновляем поля если отсутствуют
-      if (!subscription.remnawaveUuid) {
-        subscription.remnawaveUuid = ru.uuid;
+        // Обновляем поля если отсутствуют
+        if (!subscription.remnawaveUuid) {
+          subscription.remnawaveUuid = ru.uuid;
+        }
+        if (!subscription.shortUuid) {
+          subscription.shortUuid = ru.shortUuid;
+        }
       }
-      if (!subscription.shortUuid) {
-        subscription.shortUuid = ru.shortUuid;
-      }
-    } else {
-      this.logger.warn(`Subscription ${subscriptionId} has no Remnawave user, skipping panel update`);
-    }
 
     await this.subscriptionRepo.save(subscription);
     return subscription;
@@ -533,8 +492,8 @@ export class SubscriptionsService {
       const panelUsername = this.buildPanelUsername(sub.id);
       const startTs = new Date(sub.startDate).getTime();
       const expireDate = new Date(startTs + sub.days * 24 * 60 * 60 * 1000);
-      const squadUuid = this.remnawaveApi.getSquadUuid(sub.isAntiThrottling);
-      const tag = this.remnawaveApi.getTag(sub.isAntiThrottling);
+      const squadUuid = this.remnawaveApi.getSquadUuid();
+      const tag = this.remnawaveApi.getTag();
 
       try {
         const user = await this.remnawaveApi.createUser({
