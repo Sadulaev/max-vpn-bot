@@ -69,7 +69,7 @@ async function bootstrap() {
       'http://localhost:5173', // Vite dev server
       'http://localhost:3001',
       'http://localhost:5174',
-      'https://vpnhit.ru',
+      'https://panel.my-vpn-tech.ru',
       appConfig?.baseUrl,
     ].filter(Boolean),
     credentials: true,
