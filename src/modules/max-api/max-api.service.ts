@@ -196,8 +196,18 @@ export class MaxApiService implements OnModuleInit {
       return null;
     }
 
-    const data = (await uploadRes.json()) as { token?: string };
-    const token = data.token ?? null;
+    const data = (await uploadRes.json()) as {
+      token?: string;
+      photos?: Record<string, { token: string }>;
+    };
+
+    let token: string | null = data.token ?? null;
+
+    // MAX API returns { photos: { [key]: { token } } } for image uploads
+    if (!token && data.photos) {
+      const firstPhoto = Object.values(data.photos)[0];
+      token = firstPhoto?.token ?? null;
+    }
 
     if (token) {
       this.logger.log(`Image uploaded successfully, token length=${token.length}`);
