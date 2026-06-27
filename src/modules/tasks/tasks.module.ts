@@ -1,9 +1,9 @@
-import { Module, forwardRef } from '@nestjs/common';
+import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { TasksService } from './tasks.service';
 import { SubscriptionsModule } from '@modules/subscriptions';
 import { PaymentsModule } from '@modules/payments';
-import { UserBotModule } from '@modules/bot';
+import { MaxApiModule } from '@modules/max-api';
 import { Subscription } from '@database/entities';
 
 @Module({
@@ -11,7 +11,7 @@ import { Subscription } from '@database/entities';
     TypeOrmModule.forFeature([Subscription]),
     SubscriptionsModule,
     PaymentsModule,
-    forwardRef(() => UserBotModule),
+    MaxApiModule,
   ],
   providers: [TasksService],
 })

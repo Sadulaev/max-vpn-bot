@@ -43,7 +43,7 @@ async function bootstrap() {
 
   // Global prefix для API (исключая публичный эндпоинт /sub/:clientId)
   app.setGlobalPrefix('api', {
-    exclude: ['sub/:clientId', 'payment/webhook'],
+    exclude: ['sub/:clientId', 'payment/webhook', 'max/webhook'],
   });
 
   // Swagger только для development (после установки префикса)

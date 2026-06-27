@@ -179,7 +179,20 @@ export class PaymentsController {
         `dataLimit: ${planMeta.dataLimitGB ?? 0} GB`
       );
     } else {
-      // TODO: продлить активную подписку того же типа или создать новую
+      // Bot: создать или продлить подписку для пользователя
+      result = await this.subscriptionsService.createSubscription({
+        maxId: session.maxId,
+        days: (planMeta.days as number) ?? session.period * 30,
+        source: SubscriptionSource.BOT,
+        dataLimitGB: (planMeta.dataLimitGB as number) ?? 0,
+        referrerId: session.referrerId ?? undefined,
+        note: (planMeta.planLabel as string) ?? null,
+      });
+      subscriptionUrl = result.subscriptionUrl ?? '';
+      subPageUrl = result.subPageUrl ?? null;
+      this.logger.log(
+        `Bot subscription created/extended for user ${session.maxId}, plan: ${planMeta.planLabel ?? 'unknown'}`,
+      );
     }
 
     // 5. Помечаем платеж как оплаченный

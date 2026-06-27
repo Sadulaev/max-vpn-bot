@@ -1,9 +1,11 @@
-﻿import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
+﻿import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { SubscriptionsService } from '@modules/subscriptions';
 import { PaymentsService } from '@modules/payments';
+import { MaxApiService } from '@modules/max-api';
+import type { NewMessageBody } from '@modules/max-api';
 import { Subscription } from '@database/entities';
 
 @Injectable()
@@ -13,6 +15,7 @@ export class TasksService {
   constructor(
     private readonly subscriptionsService: SubscriptionsService,
     private readonly paymentsService: PaymentsService,
+    private readonly maxApiService: MaxApiService,
     @InjectRepository(Subscription)
     private readonly subscriptionRepo: Repository<Subscription>,
   ) {}
@@ -62,9 +65,36 @@ export class TasksService {
         const expireMs = new Date(ru.expireAt).getTime();
         if (expireMs - nowMs <= twoDaysMs && expireMs > nowMs) {
           const endDate = new Date(ru.expireAt);
-          // TODO: Отправка уведомления пользователю о скором окончании подписки.
-          // if (success) notified++;
-          // else failed++;
+          try {
+            if (sub.maxId && this.maxApiService.isConfigured()) {
+              const userId = parseInt(sub.maxId, 10);
+              if (!isNaN(userId)) {
+                const daysLeft = Math.ceil((expireMs - nowMs) / (24 * 60 * 60 * 1000));
+                const body: NewMessageBody = {
+                  text:
+                    `⚠️ **Подписка скоро закончится!**\n\n` +
+                    `Ваша подписка истекает ${endDate.toLocaleDateString('ru-RU')} (через ${daysLeft} дн.).\n\n` +
+                    `Продлите подписку, чтобы не потерять доступ.`,
+                  format: 'markdown',
+                  attachments: [
+                    {
+                      type: 'inline_keyboard',
+                      payload: {
+                        buttons: [
+                          [{ type: 'callback', text: '— Продлить подписку —', payload: 'buy_sub' }],
+                          [{ type: 'callback', text: '◀️ Главное меню', payload: 'main_menu' }],
+                        ],
+                      },
+                    },
+                  ],
+                };
+                await this.maxApiService.sendMessage(userId, body);
+                notified++;
+              }
+            }
+          } catch {
+            failed++;
+          }
 
           await new Promise((r) => setTimeout(r, 100));
         }

@@ -1,3 +1,9 @@
+// ============= BOT CONFIG =============
+export interface BotConfig {
+  supportContact: string;
+  channelLink: string;
+}
+
 // ============= APP CONFIG =============
 export interface AppConfig {
   port: number;
@@ -49,6 +55,7 @@ export interface RemnawaveConfig {
 // ============= MAIN CONFIG =============
 export interface Config {
   app: AppConfig;
+  bot: BotConfig;
   database: DatabaseConfig;
   telegram: TelegramConfig;
   max: MaxConfig;
@@ -62,6 +69,10 @@ export default (): Config => ({
     port: parseInt(process.env.PORT || "3000", 10),
     nodeEnv: process.env.NODE_ENV || "development",
     baseUrl: process.env.BASE_URL || "http://localhost:3000",
+  },
+  bot: {
+    supportContact: process.env.BOT_SUPPORT_CONTACT || '',
+    channelLink: process.env.BOT_CHANNEL_LINK || '',
   },
   database: {
     host: process.env.DB_HOST || "localhost",
