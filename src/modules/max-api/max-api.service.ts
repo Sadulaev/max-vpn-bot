@@ -134,7 +134,7 @@ export class MaxApiService {
     }
 
     const attachments: any[] = [
-      { type: 'photo', payload: { token } },
+      { type: 'image', payload: { token } },
       ...this.buildKeyboardAttachments(options.reply_markup),
     ];
 

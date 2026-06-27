@@ -1,2 +1,2 @@
 export { SubscriptionsModule } from './subscriptions.module';
-export { SubscriptionsService } from './subscriptions.service';
+export { SubscriptionsService, SubscriptionEnriched } from './subscriptions.service';
