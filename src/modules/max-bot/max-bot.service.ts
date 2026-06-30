@@ -179,8 +179,10 @@ export class MaxBotService implements OnModuleInit {
     const userId = callback.user.user_id;
     const payload = callback.payload ?? '';
 
-    // Сразу подтверждаем нажатие
-    await this.maxApi.answerCallback(callback.callback_id);
+    // Сразу подтверждаем нажатие (callback_id может отсутствовать у некоторых типов кнопок)
+    if (callback.callback_id) {
+      await this.maxApi.answerCallback(callback.callback_id);
+    }
 
     if (payload === 'main_menu') {
       await this.showMainMenu(userId, callback.user.name);

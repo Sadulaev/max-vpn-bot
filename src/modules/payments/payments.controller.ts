@@ -143,7 +143,16 @@ export class PaymentsController {
         planMeta.newLimit,
       );
       // Канальное уведомление о покупке слотов
-      // TODO: добавить уведомление в канал о покупке слотов устройств
+      const now = new Date();
+      const formattedDate = now.toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+      const slotMessage = [
+        '🖥 <b>Куплены слоты устройств!</b>\n',
+        `🆔 <b>Max ID:</b> <code>${session.maxId}</code>`,
+        `📦 <b>Слотов:</b> ${planMeta.slotsCount} (новый лимит: ${planMeta.newLimit})`,
+        `💵 <b>Цена:</b> ${session.amount} ₽`,
+        `📅 <b>Дата:</b> ${formattedDate}`,
+      ].join('\n');
+      await this.notificationService.sendChannelNotification(slotMessage);
       return res.send('YES');
     }
 
@@ -222,17 +231,19 @@ export class PaymentsController {
       const periodText = session.period === 1 ? '1 месяц' : `${session.period} месяцев`;
       const tariffText = planMeta.label ?? periodText;
 
-      // TODO: добавить username в сообщение, если он есть
+      const keyLine = subscriptionUrl ? `\n🔑 <b>Ключ:</b> <code>${subscriptionUrl}</code>` : '';
+
       const message = [
         '💰 <b>Новая покупка!</b>\n',
-        `👤 <b>Пользователь:</b>`, 
+        `👤 <b>Пользователь:</b> ${session.maxId ?? 'неизвестно'}`,
         `🆔 <b>Max ID:</b> <code>${session.maxId}</code>`,
         `📦 <b>Тариф:</b> ${tariffText}`,
         `💵 <b>Цена:</b> ${session.amount} ₽`,
         `📅 <b>Дата:</b> ${formattedDate}`,
-      ].join('\n');
+        keyLine,
+      ].filter(Boolean).join('\n');
 
-      // TODO: добавить отправку уведомления в канал через ТГ
+      await this.notificationService.sendChannelNotification(message);
       this.logger.log(`Purchase notification sent to channel for user ${session.maxId}`);
     } catch (error) {
       this.logger.error('Failed to send purchase notification to channel:', error);

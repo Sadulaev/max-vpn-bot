@@ -22,6 +22,7 @@ export interface DatabaseConfig {
 
 // ============= TELEGRAM CONFIG =============
 export interface TelegramConfig {
+  botToken: string;
   notificationChannelId: string;
 }
 
@@ -82,6 +83,7 @@ export default (): Config => ({
     database: process.env.DB_NAME || "max_vpn",
   },
   telegram: {
+    botToken: process.env.TELEGRAM_BOT_TOKEN || "",
     notificationChannelId: process.env.TG_NOTIFICATION_CHANNEL_ID || "",
   },
   max: {

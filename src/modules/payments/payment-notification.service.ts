@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { MaxApiService } from '@modules/max-api';
 import type { NewMessageBody, MaxButtonRow } from '@modules/max-api';
 
@@ -8,6 +9,7 @@ export class PaymentNotificationService {
 
   constructor(
     private readonly maxApiService: MaxApiService,
+    private readonly configService: ConfigService,
   ) {}
 
   /**
@@ -129,6 +131,33 @@ export class PaymentNotificationService {
     await this.maxApiService.sendMessage(userId, body);
     this.logger.log(`Device slots success notification sent to user ${userId}`);
   }
-}
 
+  /**
+   * Отправить HTML-сообщение в Telegram-канал уведомлений.
+   * Требует TELEGRAM_BOT_TOKEN и TG_NOTIFICATION_CHANNEL_ID в конфигурации.
+   */
+  async sendChannelNotification(htmlMessage: string): Promise<void> {
+    const botToken = this.configService.get<string>('telegram.botToken', '');
+    const channelId = this.configService.get<string>('telegram.notificationChannelId', '');
+
+    if (!botToken || !channelId) {
+      this.logger.debug('Telegram channel notification skipped: TELEGRAM_BOT_TOKEN or TG_NOTIFICATION_CHANNEL_ID not set');
+      return;
+    }
+
+    const url = `https://api.telegram.org/bot${botToken}/sendMessage`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: channelId, text: htmlMessage, parse_mode: 'HTML' }),
+    });
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      this.logger.error(`Telegram channel notification failed (${res.status}): ${text}`);
+    } else {
+      this.logger.log('Telegram channel notification sent');
+    }
+  }
+}
 

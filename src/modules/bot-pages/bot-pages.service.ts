@@ -232,7 +232,7 @@ export class BotPagesService {
       iphone: {
         title: '🍎 iPhone / iPad',
         steps:
-          `1. Скачайте **Happ VPN** из App Store\n` +
+          `1. Скачайте **Happ VPN** (либо - Incy) из App Store\n` +
           `2. Откройте страницу подписки и скопируйте ключ\n` +
           `3. В приложении нажмите «+» и вставьте ключ\n` +
           `4. Нажмите «Подключить» — готово!`,
