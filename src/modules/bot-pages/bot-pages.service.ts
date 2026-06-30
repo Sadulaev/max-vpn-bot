@@ -38,7 +38,7 @@ export class BotPagesService {
     const text = `${greeting}${MAIN_TEXT}\n\n🆔 Ваш ID: \`${userId}\``;
 
     const buttons: MaxButtonRow[] = [
-      [{ type: 'callback', text: '— Приобрести подписку —', payload: 'buy_sub' }],
+      [{ type: 'callback', text: '💳 Приобрести подписку', payload: 'buy_sub' }],
       [{ type: 'callback', text: '💎 Моя подписка', payload: 'my_sub' }],
       [{ type: 'callback', text: '⚙️ Инструкция установки', payload: 'instruction' }],
       [{ type: 'callback', text: '🛟 Поддержка', payload: 'support' }],
@@ -132,7 +132,7 @@ export class BotPagesService {
             type: 'inline_keyboard',
             payload: {
               buttons: [
-                [{ type: 'callback', text: '— Приобрести подписку —', payload: 'buy_sub' }],
+                [{ type: 'callback', text: '💳 Приобрести подписку', payload: 'buy_sub' }],
                 backButton,
               ],
             },
@@ -177,13 +177,43 @@ export class BotPagesService {
     };
   }
 
-  /** Инструкция установки */
-  async buildInstructionPage(userId: number): Promise<NewMessageBody> {
-    const subscription = await this.subscriptionsService.getActiveSubscriptionByMaxId(String(userId));
+  /** Инструкция установки — выбор устройства */
+  async buildInstructionPage(userId: number, imageToken?: string | null): Promise<NewMessageBody> {
+    const text =
+      `⚙️ **Инструкция по установке**\n\n` +
+      `Простое подключение за 3 шага\n\n` +
+      `Выберите ваше устройство, чтобы получить ссылки на скачивание Happ VPN:`;
 
-    const backButton: MaxButtonRow = [
-      { type: 'callback', text: '◀️ Главное меню', payload: 'main_menu' },
+    const buttons: MaxButtonRow[] = [
+      [
+        { type: 'callback', text: '🍎 iPhone / iPad', payload: 'instruction:iphone' },
+        { type: 'callback', text: '🤖 Android', payload: 'instruction:android' },
+      ],
+      [
+        { type: 'callback', text: '🖥 MacBook / iMac', payload: 'instruction:macos' },
+        { type: 'callback', text: '🪟 Windows', payload: 'instruction:windows' },
+      ],
+      [
+        { type: 'callback', text: '📺 Apple TV', payload: 'instruction:appletv' },
+        { type: 'callback', text: '📺 Android TV', payload: 'instruction:androidtv' },
+      ],
+      [{ type: 'callback', text: '◀️ Назад', payload: 'main_menu' }],
     ];
+
+    const attachments: MaxAttachment[] = [];
+
+    if (imageToken) {
+      attachments.push({ type: 'image', payload: { token: imageToken } });
+    }
+
+    attachments.push({ type: 'inline_keyboard', payload: { buttons } });
+
+    return { text, format: 'markdown', attachments };
+  }
+
+  /** Инструкция для конкретного устройства */
+  async buildInstructionDevicePage(userId: number, device: string): Promise<NewMessageBody> {
+    const subscription = await this.subscriptionsService.getActiveSubscriptionByMaxId(String(userId));
 
     let subPageUrl: string | null = null;
     if (subscription) {
@@ -194,22 +224,77 @@ export class BotPagesService {
       }
     }
 
-    const text =
-      `📖 **Инструкция по установке HIT VPN**\n\n` +
-      `1. Откройте вашу страницу подписки\n` +
-      `2. Скопируйте ключ подписки\n` +
-      `3. Установите VPN-клиент (рекомендуем Hiddify или V2Box)\n` +
-      `4. Добавьте ключ в приложение\n` +
-      `5. Подключитесь и пользуйтесь!`;
+    const backButton: MaxButtonRow = [
+      { type: 'callback', text: '◀️ Назад', payload: 'instruction' },
+    ];
+
+    const deviceInstructions: Record<string, { title: string; steps: string }> = {
+      iphone: {
+        title: '🍎 iPhone / iPad',
+        steps:
+          `1. Скачайте **Happ VPN** из App Store\n` +
+          `2. Откройте страницу подписки и скопируйте ключ\n` +
+          `3. В приложении нажмите «+» и вставьте ключ\n` +
+          `4. Нажмите «Подключить» — готово!`,
+      },
+      android: {
+        title: '🤖 Android',
+        steps:
+          `1. Скачайте **Happ VPN** из Google Play или APK\n` +
+          `2. Откройте страницу подписки и скопируйте ключ\n` +
+          `3. В приложении нажмите «+» и вставьте ключ\n` +
+          `4. Нажмите «Подключить» — готово!`,
+      },
+      macos: {
+        title: '🖥 MacBook / iMac',
+        steps:
+          `1. Скачайте **Happ VPN** из Mac App Store\n` +
+          `2. Откройте страницу подписки и скопируйте ключ\n` +
+          `3. В приложении нажмите «+» и вставьте ключ\n` +
+          `4. Нажмите «Подключить» — готово!`,
+      },
+      windows: {
+        title: '🪟 Windows',
+        steps:
+          `1. Скачайте установщик **Happ VPN** для Windows\n` +
+          `2. Установите приложение и откройте его\n` +
+          `3. Откройте страницу подписки и скопируйте ключ\n` +
+          `4. В приложении нажмите «+», вставьте ключ и подключитесь!`,
+      },
+      appletv: {
+        title: '📺 Apple TV',
+        steps:
+          `1. Скачайте **Happ VPN** из App Store на Apple TV\n` +
+          `2. На телефоне или компьютере откройте страницу подписки\n` +
+          `3. Скопируйте ключ и введите его в приложении на TV\n` +
+          `4. Нажмите «Подключить» — готово!`,
+      },
+      androidtv: {
+        title: '📺 Android TV',
+        steps:
+          `1. Скачайте **Happ VPN** из Google Play на Android TV\n` +
+          `2. На телефоне или компьютере откройте страницу подписки\n` +
+          `3. Скопируйте ключ и введите его в приложении на TV\n` +
+          `4. Нажмите «Подключить» — готово!`,
+      },
+    };
+
+    const info = deviceInstructions[device];
+    if (!info) {
+      return {
+        text: '❌ Устройство не найдено.',
+        attachments: [{ type: 'inline_keyboard', payload: { buttons: [backButton] } }],
+      };
+    }
+
+    const text = `**${info.title}**\n\n${info.steps}`;
 
     const buttons: MaxButtonRow[] = [];
 
     if (subPageUrl) {
       buttons.push([{ type: 'link', text: '🔑 Открыть страницу подписки', url: subPageUrl }]);
     } else {
-      buttons.push([
-        { type: 'callback', text: '— Приобрести подписку —', payload: 'buy_sub' },
-      ]);
+      buttons.push([{ type: 'callback', text: '💳 Приобрести подписку', payload: 'buy_sub' }]);
     }
 
     buttons.push(backButton);
@@ -217,12 +302,7 @@ export class BotPagesService {
     return {
       text,
       format: 'markdown',
-      attachments: [
-        {
-          type: 'inline_keyboard',
-          payload: { buttons },
-        },
-      ],
+      attachments: [{ type: 'inline_keyboard', payload: { buttons } }],
     };
   }
 

@@ -19,6 +19,8 @@ export class MaxBotService implements OnModuleInit {
   private readonly logger = new Logger(MaxBotService.name);
   /** Токен баннерного изображения, закешированный при старте */
   private cachedImageToken: string | null = null;
+  /** Токен изображения страницы инструкций */
+  private cachedInstructionsImageToken: string | null = null;
 
   constructor(
     private readonly maxApi: MaxApiService,
@@ -55,11 +57,12 @@ export class MaxBotService implements OnModuleInit {
 
     // Загружаем баннерное изображение
     await this.warmUpBannerImage();
+    await this.warmUpInstructionsImage();
   }
 
-  /** Загружает assets/max-default.png и кеширует токен */
+  /** Загружает assets/menu-page.jpg и кеширует токен */
   private async warmUpBannerImage(): Promise<void> {
-    const imagePath = join(process.cwd(), 'assets', 'max-default.png');
+    const imagePath = join(process.cwd(), 'assets', 'menu-page.jpg');
 
     if (!existsSync(imagePath)) {
       this.logger.warn(`Banner image not found at ${imagePath} — messages will be sent without image`);
@@ -69,7 +72,7 @@ export class MaxBotService implements OnModuleInit {
     try {
       const buffer = readFileSync(imagePath);
       this.logger.log('Uploading banner image to MAX API...');
-      const token = await this.maxApi.uploadImage(buffer, 'max-default.png');
+      const token = await this.maxApi.uploadImage(buffer, 'menu-page.jpg');
 
       if (token) {
         this.cachedImageToken = token;
@@ -79,6 +82,31 @@ export class MaxBotService implements OnModuleInit {
       }
     } catch (err: unknown) {
       this.logger.error(`Failed to upload banner image: ${(err as Error)?.message}`);
+    }
+  }
+
+  /** Загружает assets/instructions-page.jpg и кеширует токен */
+  private async warmUpInstructionsImage(): Promise<void> {
+    const imagePath = join(process.cwd(), 'assets', 'instructions-page.jpg');
+
+    if (!existsSync(imagePath)) {
+      this.logger.warn(`Instructions image not found at ${imagePath} — instruction page will be sent without image`);
+      return;
+    }
+
+    try {
+      const buffer = readFileSync(imagePath);
+      this.logger.log('Uploading instructions image to MAX API...');
+      const token = await this.maxApi.uploadImage(buffer, 'instructions-page.jpg');
+
+      if (token) {
+        this.cachedInstructionsImageToken = token;
+        this.logger.log('Instructions image uploaded and token cached');
+      } else {
+        this.logger.warn('Instructions image upload returned no token — instruction page will be sent without image');
+      }
+    } catch (err: unknown) {
+      this.logger.error(`Failed to upload instructions image: ${(err as Error)?.message}`);
     }
   }
 
@@ -180,6 +208,12 @@ export class MaxBotService implements OnModuleInit {
       return;
     }
 
+    if (payload.startsWith('instruction:')) {
+      const device = payload.split(':')[1];
+      await this.showInstructionDevice(userId, device);
+      return;
+    }
+
     if (payload === 'referral') {
       await this.showReferral(userId);
       return;
@@ -212,7 +246,12 @@ export class MaxBotService implements OnModuleInit {
   }
 
   private async showInstruction(userId: number): Promise<void> {
-    const body = await this.pages.buildInstructionPage(userId);
+    const body = await this.pages.buildInstructionPage(userId, this.cachedInstructionsImageToken);
+    await this.maxApi.sendMessage(userId, body);
+  }
+
+  private async showInstructionDevice(userId: number, device: string): Promise<void> {
+    const body = await this.pages.buildInstructionDevicePage(userId, device);
     await this.maxApi.sendMessage(userId, body);
   }
 
