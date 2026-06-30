@@ -231,8 +231,6 @@ export class PaymentsController {
       const periodText = session.period === 1 ? '1 месяц' : `${session.period} месяцев`;
       const tariffText = planMeta.label ?? periodText;
 
-      const keyLine = subscriptionUrl ? `\n🔑 <b>Ключ:</b> <code>${subscriptionUrl}</code>` : '';
-
       const message = [
         '💰 <b>Новая покупка!</b>\n',
         `👤 <b>Пользователь:</b> ${session.maxId ?? 'неизвестно'}`,
@@ -240,8 +238,7 @@ export class PaymentsController {
         `📦 <b>Тариф:</b> ${tariffText}`,
         `💵 <b>Цена:</b> ${session.amount} ₽`,
         `📅 <b>Дата:</b> ${formattedDate}`,
-        keyLine,
-      ].filter(Boolean).join('\n');
+      ].join('\n');
 
       await this.notificationService.sendChannelNotification(message);
       this.logger.log(`Purchase notification sent to channel for user ${session.maxId}`);

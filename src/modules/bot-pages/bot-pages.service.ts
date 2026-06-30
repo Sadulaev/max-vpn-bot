@@ -142,13 +142,19 @@ export class BotPagesService {
     }
 
     let subPageUrl: string | null = null;
+    let subscriptionUrl: string | null = null;
     try {
       subPageUrl = await this.subscriptionsService.getSubPageUrl(subscription.id);
     } catch {
       subPageUrl = null;
     }
+    try {
+      subscriptionUrl = await this.subscriptionsService.getSubscriptionUrl(subscription.id);
+    } catch {
+      subscriptionUrl = null;
+    }
 
-    if (!subPageUrl) {
+    if (!subPageUrl && !subscriptionUrl) {
       return {
         text: '⚠️ Не удалось получить ссылку на подписку. Обратитесь в поддержку.',
         attachments: [
@@ -160,13 +166,18 @@ export class BotPagesService {
       };
     }
 
-    const buttons: MaxButtonRow[] = [
-      [{ type: 'link', text: '🔑 Открыть страницу подписки', url: subPageUrl }],
-      backButton,
-    ];
+    const keySection = subscriptionUrl
+      ? `\n\n🔑 **Ключ подписки:**\n\`${subscriptionUrl}\``
+      : '';
+
+    const buttons: MaxButtonRow[] = [];
+    if (subPageUrl) {
+      buttons.push([{ type: 'link', text: '🔑 Открыть страницу подписки', url: subPageUrl }]);
+    }
+    buttons.push(backButton);
 
     return {
-      text: `✅ **Ваша подписка активна!**\n\nНа странице подписки вы найдёте ключ доступа и инструкцию по подключению.`,
+      text: `✅ **Ваша подписка активна!**` + keySection + `\n\nНа странице подписки вы найдёте инструкцию по подключению.`,
       format: 'markdown',
       attachments: [
         {

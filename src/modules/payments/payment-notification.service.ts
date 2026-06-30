@@ -41,11 +41,16 @@ export class PaymentNotificationService {
 
     buttons.push([{ type: 'callback', text: '◀️ Главное меню', payload: 'main_menu' }]);
 
+    const keySection = subscriptionUrl
+      ? `\n\n🔑 **Ключ подписки:**\n\`${subscriptionUrl}\``
+      : '';
+
     const body: NewMessageBody = {
       text:
         `🎉 **Подписка успешно активирована!**\n\n` +
-        `Срок: **${periodLabel}**\n\n` +
-        `На вашей странице подписки вы найдёте ключ доступа и инструкцию по подключению.`,
+        `Срок: **${periodLabel}**` +
+        keySection +
+        `\n\nНа странице подписки вы найдёте инструкцию по подключению.`,
       format: 'markdown',
       attachments: [
         {
