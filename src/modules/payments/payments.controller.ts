@@ -63,47 +63,86 @@ export class PaymentsController {
     @Body() body: FreekassaWebhookBody,
     @Res() res: Response,
   ) {
-    const { MERCHANT_ID, AMOUNT, MERCHANT_ORDER_ID, SIGN, intid } = body;
+    const { MERCHANT_ID, AMOUNT, SIGN, intid, P_EMAIL } = body;
+    // FK иногда присылает пустую строку вместо orderId
+    const merchantOrderId = (body.MERCHANT_ORDER_ID ?? '').trim();
 
     this.logger.log(`FK webhook body: ${JSON.stringify(body)}`);
 
-    // Отклоняем запросы без orderId и без intid
-    if (!MERCHANT_ORDER_ID && !intid) {
-      this.logger.warn('FK webhook received with empty MERCHANT_ORDER_ID and intid');
+    // Отклоняем запросы без orderId, intid и email-заглушки
+    if (!merchantOrderId && !intid && !P_EMAIL) {
+      this.logger.warn('FK webhook received with empty MERCHANT_ORDER_ID, intid and P_EMAIL');
       return res.status(HttpStatus.BAD_REQUEST).send('Missing MERCHANT_ORDER_ID');
     }
 
-    // 1. Верифицируем подпись
+    // 1. Верифицируем подпись (FK подписывает и пустой MERCHANT_ORDER_ID)
     const isValid = this.freekassaService.verifyWebhookSignature(
       MERCHANT_ID,
       AMOUNT,
-      MERCHANT_ORDER_ID,
+      merchantOrderId,
       SIGN,
     );
 
     if (!isValid) {
-      this.logger.error(`Invalid FK signature: orderId=${MERCHANT_ORDER_ID}`);
+      this.logger.error(`Invalid FK signature: orderId=${merchantOrderId || '(empty)'}, intid=${intid}`);
       return res.status(HttpStatus.BAD_REQUEST).send('Invalid signature');
     }
 
-    // 2. Находим сессию платежа: сначала по MERCHANT_ORDER_ID, затем по intid
-    let session = MERCHANT_ORDER_ID
-      ? await this.paymentsService.findByInvId(MERCHANT_ORDER_ID)
+    // 2. Находим сессию: invId → fkOrderId(intid) → maxId+amount из email-заглушки
+    let session = merchantOrderId
+      ? await this.paymentsService.findByInvId(merchantOrderId)
       : null;
 
     if (!session && intid) {
-      this.logger.warn(`Session not found by MERCHANT_ORDER_ID="${MERCHANT_ORDER_ID}", trying intid="${intid}"`);
+      this.logger.warn(
+        `Session not found by MERCHANT_ORDER_ID="${merchantOrderId}", trying intid="${intid}"`,
+      );
       session = await this.paymentsService.findByFkOrderId(intid);
+      if (session) {
+        this.logger.log(`Session found by intid=${intid}, invId=${session.invId}`);
+      }
+    }
+
+    if (!session && P_EMAIL) {
+      const emailMatch = P_EMAIL.match(/^(\d+)@max-vpn\.tech$/i);
+      if (emailMatch) {
+        const maxIdFromEmail = emailMatch[1];
+        const amountNum = Math.round(parseFloat(AMOUNT));
+        this.logger.warn(
+          `Session not found by intid, trying maxId=${maxIdFromEmail} amount=${amountNum} from P_EMAIL`,
+        );
+        session = await this.paymentsService.findPendingByMaxIdAndAmount(
+          maxIdFromEmail,
+          amountNum,
+        );
+        if (session) {
+          this.logger.log(
+            `Session found by maxId+amount fallback: invId=${session.invId}, maxId=${maxIdFromEmail}`,
+          );
+          // Привязываем intid, чтобы повторные webhook'и находили сессию сразу
+          if (intid && !session.fkOrderId) {
+            await this.paymentsService.setFkOrderId(session.invId, intid);
+          }
+        }
+      }
     }
 
     if (!session) {
-      this.logger.error(`Payment session not found: ${MERCHANT_ORDER_ID}`);
+      this.logger.error(
+        `Payment session not found: MERCHANT_ORDER_ID="${merchantOrderId}", intid="${intid}", P_EMAIL="${P_EMAIL}"`,
+      );
       return res.status(HttpStatus.NOT_FOUND).send('Session not found');
+    }
+
+    // Сохраняем intid, если ещё не был привязан (ускоряет повторные webhook'и)
+    if (intid && !session.fkOrderId) {
+      await this.paymentsService.setFkOrderId(session.invId, intid);
+      session.fkOrderId = intid;
     }
 
     // 3. Идемпотентность
     if (session.status === 'paid') {
-      this.logger.log(`Payment already processed: ${MERCHANT_ORDER_ID}`);
+      this.logger.log(`Payment already processed: invId=${session.invId}, intid=${intid}`);
       return res.send('YES');
     }
 
@@ -137,11 +176,15 @@ export class PaymentsController {
         this.logger.error(`Failed to update hwidDeviceLimit for sub ${session.subscriptionId}:`, error);
       }
       await this.paymentsService.markPaid(session.invId);
-      await this.notificationService.notifyDeviceSlotsSuccess(
-        session.maxId,
-        planMeta.slotsCount,
-        planMeta.newLimit,
-      );
+      try {
+        await this.notificationService.notifyDeviceSlotsSuccess(
+          session.maxId,
+          planMeta.slotsCount,
+          planMeta.newLimit,
+        );
+      } catch (error) {
+        this.logger.error(`Failed to notify device slots success for ${session.maxId}:`, error);
+      }
       // Канальное уведомление о покупке слотов
       const now = new Date();
       const formattedDate = now.toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
@@ -156,64 +199,86 @@ export class PaymentsController {
       return res.send('YES');
     }
 
-    if (session.subscriptionId) {
-      // Mini app: продлеваем конкретную подписку
-      const extended = await this.subscriptionsService.extendSubscription(
-        session.subscriptionId,
-        session.period * 30,
-        planMeta.dataLimitGB ?? 0,
+    try {
+      if (session.subscriptionId) {
+        // Mini app: продлеваем конкретную подписку
+        const extended = await this.subscriptionsService.extendSubscription(
+          session.subscriptionId,
+          session.period * 30,
+          planMeta.dataLimitGB ?? 0,
+        );
+        this.logger.log(
+          `Extended specific subscription ${session.subscriptionId} for user ${session.maxId} by ${session.period * 30} days`,
+        );
+        subscriptionUrl = await this.subscriptionsService.getSubscriptionUrl(extended.id);
+        subPageUrl = await this.subscriptionsService.getSubPageUrl(extended.id);
+        result = { subscriptionUrl };
+      } else if (session.forceNewSubscription) {
+        // Mini app: создать новую подписку (не продлевать активную)
+        result = await this.subscriptionsService.createSubscription({
+          maxId: session.maxId,
+          days: session.period * 30,
+          source: SubscriptionSource.BOT,
+          dataLimitGB: planMeta.dataLimitGB ?? 0,
+          proxiesConfig: planMeta.proxiesConfig,
+          inboundsConfig: planMeta.inboundsConfig,
+          note: planMeta.subscriptionName || null,
+          isAdditional: planMeta.isMain === false,
+        });
+        subscriptionUrl = result.subscriptionUrl;
+        subPageUrl = result.subPageUrl;
+        this.logger.log(
+          `Created new subscription (${planMeta.planType ?? 'standard'}) for user ${session.maxId}, ` +
+            `dataLimit: ${planMeta.dataLimitGB ?? 0} GB`,
+        );
+      } else {
+        // Bot: создать или продлить подписку для пользователя
+        result = await this.subscriptionsService.createSubscription({
+          maxId: session.maxId,
+          days: (planMeta.days as number) ?? session.period * 30,
+          source: SubscriptionSource.BOT,
+          dataLimitGB: (planMeta.dataLimitGB as number) ?? 0,
+          referrerId: session.referrerId ?? undefined,
+          note: (planMeta.planLabel as string) ?? null,
+        });
+        subscriptionUrl = result.subscriptionUrl ?? '';
+        subPageUrl = result.subPageUrl ?? null;
+        this.logger.log(
+          `Bot subscription created/extended for user ${session.maxId}, plan: ${planMeta.planLabel ?? 'unknown'}`,
+        );
+      }
+    } catch (error) {
+      this.logger.error(
+        `Failed to activate subscription for invId=${session.invId}, maxId=${session.maxId}:`,
+        error,
       );
-      this.logger.log(
-        `Extended specific subscription ${session.subscriptionId} for user ${session.maxId} by ${session.period * 30} days`
-      );
-      subscriptionUrl = await this.subscriptionsService.getSubscriptionUrl(extended.id);
-      subPageUrl = await this.subscriptionsService.getSubPageUrl(extended.id);
-      result = { subscriptionUrl };
-    } else if (session.forceNewSubscription) {
-      // Mini app: создать новую подписку (не продлевать активную)
-      result = await this.subscriptionsService.createSubscription({
-        maxId: session.maxId,
-        days: session.period * 30,
-        source: SubscriptionSource.BOT,
-        dataLimitGB: planMeta.dataLimitGB ?? 0,
-        proxiesConfig: planMeta.proxiesConfig,
-        inboundsConfig: planMeta.inboundsConfig,
-        note: planMeta.subscriptionName || null,
-        isAdditional: planMeta.isMain === false,
-      });
-      subscriptionUrl = result.subscriptionUrl;
-      subPageUrl = result.subPageUrl;
-      this.logger.log(
-        `Created new subscription (${planMeta.planType ?? 'standard'}) for user ${session.maxId}, ` +
-        `dataLimit: ${planMeta.dataLimitGB ?? 0} GB`
-      );
-    } else {
-      // Bot: создать или продлить подписку для пользователя
-      result = await this.subscriptionsService.createSubscription({
-        maxId: session.maxId,
-        days: (planMeta.days as number) ?? session.period * 30,
-        source: SubscriptionSource.BOT,
-        dataLimitGB: (planMeta.dataLimitGB as number) ?? 0,
-        referrerId: session.referrerId ?? undefined,
-        note: (planMeta.planLabel as string) ?? null,
-      });
-      subscriptionUrl = result.subscriptionUrl ?? '';
-      subPageUrl = result.subPageUrl ?? null;
-      this.logger.log(
-        `Bot subscription created/extended for user ${session.maxId}, plan: ${planMeta.planLabel ?? 'unknown'}`,
-      );
+      try {
+        await this.notificationService.notifyKeyGenerationError(session.maxId);
+      } catch (notifyErr) {
+        this.logger.error(`Failed to send key generation error to ${session.maxId}:`, notifyErr);
+      }
+      // Не YES — FK повторит webhook
+      return res.status(HttpStatus.INTERNAL_SERVER_ERROR).send('Activation failed');
     }
 
-    // 5. Помечаем платеж как оплаченный
+    // 5. Помечаем платёж как оплаченный
     await this.paymentsService.markPaid(session.invId);
 
-    // 6. Уведомляем пользователя
-    await this.notificationService.notifyPaymentSuccess(
-      session.maxId,
-      subscriptionUrl,
-      session.period,
-      subPageUrl,
-    );
+    // 6. Уведомляем пользователя (ошибка доставки не должна ломать webhook —
+    //    иначе FK ретраит, а сессия уже paid и сообщение больше не отправится)
+    try {
+      await this.notificationService.notifyPaymentSuccess(
+        session.maxId,
+        subscriptionUrl,
+        session.period,
+        subPageUrl,
+      );
+    } catch (error) {
+      this.logger.error(
+        `Failed to send payment success notification to ${session.maxId}, invId=${session.invId}:`,
+        error,
+      );
+    }
 
     // 8. Отправляем уведомление в канал о покупке
     try {
@@ -247,7 +312,9 @@ export class PaymentsController {
       // Не прерываем обработку платежа если уведомление не отправилось
     }
 
-    this.logger.log(`Payment processed successfully: invId=${session.invId}, MERCHANT_ORDER_ID=${MERCHANT_ORDER_ID}, intid=${intid}`);
+    this.logger.log(
+      `Payment processed successfully: invId=${session.invId}, MERCHANT_ORDER_ID=${merchantOrderId || '(empty)'}, intid=${intid}`,
+    );
 
     // 9. Реферальное вознаграждение (только для новых основных подписок, не продлений и не дополнительных)
     if (session.referrerId && !session.subscriptionId && planMeta.isMain !== false) {

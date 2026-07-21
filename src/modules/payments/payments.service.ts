@@ -98,14 +98,29 @@ export class PaymentsService {
    * Найти платёж по FK внутреннему orderId (intid из вебхука)
    */
   async findByFkOrderId(fkOrderId: string): Promise<PaymentSession | null> {
-    return this.paymentRepository.findOne({ where: { fkOrderId } });
+    if (!fkOrderId) return null;
+    return this.paymentRepository.findOne({ where: { fkOrderId: String(fkOrderId) } });
+  }
+
+  /**
+   * Fallback: последняя pending-сессия пользователя на эту сумму
+   * (когда FK присылает пустой MERCHANT_ORDER_ID и intid не сматчился)
+   */
+  async findPendingByMaxIdAndAmount(
+    maxId: string,
+    amount: number,
+  ): Promise<PaymentSession | null> {
+    return this.paymentRepository.findOne({
+      where: { maxId: String(maxId), amount, status: 'pending' },
+      order: { createdAt: 'DESC' },
+    });
   }
 
   /**
    * Сохранить FK внутренний orderId в сессию
    */
   async setFkOrderId(invId: string, fkOrderId: string): Promise<void> {
-    await this.paymentRepository.update({ invId }, { fkOrderId });
+    await this.paymentRepository.update({ invId }, { fkOrderId: String(fkOrderId) });
   }
 
   /**

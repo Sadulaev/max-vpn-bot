@@ -129,13 +129,21 @@ export class MaxApiService implements OnModuleInit {
    */
   async answerCallback(callbackId: string, notification?: string): Promise<MaxAnswerCallbackResponse | null> {
     if (!this.isConfigured()) return null;
+    if (!callbackId?.trim()) {
+      this.logger.warn('answerCallback skipped: empty callback_id');
+      return null;
+    }
 
-    const body: Record<string, unknown> = { callback_id: callbackId };
+    // MAX API требует callback_id как query-параметр, не в body
+    const url = new URL(`${this.apiUrl}/answers`);
+    url.searchParams.set('callback_id', callbackId);
+
+    const body: Record<string, unknown> = {};
     if (notification) {
       body.notification = notification;
     }
 
-    const res = await fetch(`${this.apiUrl}/answers`, {
+    const res = await fetch(url.toString(), {
       method: 'POST',
       headers: this.headers(),
       body: JSON.stringify(body),
