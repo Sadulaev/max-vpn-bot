@@ -144,7 +144,8 @@ export class SubscriptionsService {
     endDate.setDate(endDate.getDate() + dto.days);
 
     const subscription = this.subscriptionRepo.create({
-      username: '',
+      // unique index на username: пустая строка конфликтует, NULL — безопасно до sync
+      username: null,
       maxId: dto.maxId ?? null,
       source: dto.source ?? SubscriptionSource.ADMIN,
       days: dto.days,

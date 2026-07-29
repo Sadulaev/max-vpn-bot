@@ -134,19 +134,15 @@ export class MaxApiService implements OnModuleInit {
       return null;
     }
 
-    // MAX API требует callback_id как query-параметр, не в body
+    // MAX API: callback_id — query; в body обязателен непустой message или notification
     const url = new URL(`${this.apiUrl}/answers`);
     url.searchParams.set('callback_id', callbackId);
-
-    const body: Record<string, unknown> = {};
-    if (notification) {
-      body.notification = notification;
-    }
 
     const res = await fetch(url.toString(), {
       method: 'POST',
       headers: this.headers(),
-      body: JSON.stringify(body),
+      // Без текста — zero-width space: снимает «загрузку» кнопки без видимого toast
+      body: JSON.stringify({ notification: notification?.trim() || '\u200b' }),
     });
 
     if (!res.ok) {

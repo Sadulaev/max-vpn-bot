@@ -34,6 +34,7 @@ export class FreekassaService {
 
   private readonly API_URL = 'https://api.fk.life/v1';
   private readonly CURRENCY = 'RUB';
+  private lastNonce = 0;
 
   constructor(private readonly configService: ConfigService) {
     const fk = this.configService.get('freekassa');
@@ -41,6 +42,16 @@ export class FreekassaService {
     this.secretWord2 = fk?.secretWord2 || '';
     this.apiKey = fk?.apiKey || '';
     this.serverIp = fk?.serverIp || '';
+  }
+
+  /**
+   * FK требует строго возрастающий nonce.
+   * Date.now() может совпасть при быстрых запросах, поэтому делаем монотонный счётчик.
+   */
+  private nextNonce(): number {
+    const now = Date.now();
+    this.lastNonce = Math.max(now, this.lastNonce + 1);
+    return this.lastNonce;
   }
 
   /**
@@ -52,7 +63,7 @@ export class FreekassaService {
     const { invId, amount, email, maxId } = params;
     const amountStr = amount.toFixed(2);
     const effectiveEmail = email || (maxId ? `${maxId}@max-vpn.tech` : `noreply@max-vpn.tech`);
-    const nonce = Date.now();
+    const nonce = this.nextNonce();
 
     const payload: Record<string, any> = {
       shopId: this.shopId,
@@ -71,13 +82,25 @@ export class FreekassaService {
 
     payload.signature = this.buildApiSignature(payload);
 
-    const response = await fetch(`${this.API_URL}/orders/create`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
+    const createOrder = async (currentPayload: Record<string, any>) => {
+      const response = await fetch(`${this.API_URL}/orders/create`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(currentPayload),
+      });
+      return (await response.json()) as any;
+    };
 
-    const data = (await response.json()) as any;
+    let data = await createOrder(payload);
+
+    // Иногда FK отклоняет nonce даже при Date.now(); пробуем 1 ретрай с новым nonce.
+    if (data?.type === 'error' && String(data?.message ?? '').includes('same (or bigger) nonce')) {
+      const retryNonce = this.nextNonce();
+      const retryPayload = { ...payload, nonce: retryNonce };
+      retryPayload.signature = this.buildApiSignature(retryPayload);
+      this.logger.warn(`FK nonce conflict for invId=${invId}, retrying with nonce=${retryNonce}`);
+      data = await createOrder(retryPayload);
+    }
 
     if (data.type === 'success' && data.location) {
       this.logger.log(`Order created via API: invId=${invId}, fkOrderId=${data.orderId}`);
@@ -115,7 +138,7 @@ export class FreekassaService {
    * Параметр: paymentId — наш invId (MERCHANT_ORDER_ID)
    */
   async refundOrder(paymentId: string): Promise<{ success: boolean; id?: number; error?: string }> {
-    const nonce = Date.now();
+    const nonce = this.nextNonce();
     const payload: Record<string, any> = {
       shopId: this.shopId,
       nonce,
