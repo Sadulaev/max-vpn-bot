@@ -96,7 +96,7 @@ export class FreekassaService {
     // Иногда FK отклоняет nonce даже при Date.now(); пробуем 1 ретрай с новым nonce.
     if (data?.type === 'error' && String(data?.message ?? '').includes('same (or bigger) nonce')) {
       const retryNonce = this.nextNonce();
-      const retryPayload = { ...payload, nonce: retryNonce };
+      const retryPayload: Record<string, any> = { ...payload, nonce: retryNonce };
       retryPayload.signature = this.buildApiSignature(retryPayload);
       this.logger.warn(`FK nonce conflict for invId=${invId}, retrying with nonce=${retryNonce}`);
       data = await createOrder(retryPayload);
