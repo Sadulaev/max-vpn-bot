@@ -18,14 +18,3 @@ import { SubscriptionPublicController } from './subscription-public.controller';
   exports: [SubscriptionsService],
 })
 export class SubscriptionsModule {}
-
-@Module({
-  imports: [
-    TypeOrmModule.forFeature([Subscription]),
-    RemnawaveApiModule,
-  ],
-  controllers: [SubscriptionsController, SubscriptionPublicController],
-  providers: [SubscriptionsService],
-  exports: [SubscriptionsService],
-})
-export class SubscriptionsModule {}
