@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import type { NewMessageBody, MaxButtonRow, MaxAttachment } from '@modules/max-api';
+import type { NewMessageBody, MaxButtonRow } from '@modules/max-api';
 import { PlansService } from '@modules/plans';
 import { SubscriptionsService } from '@modules/subscriptions';
 
@@ -33,7 +33,7 @@ export class BotPagesService {
   }
 
   /** Главное меню */
-  buildMainMenu(userId: number, userName?: string, imageToken?: string | null): NewMessageBody {
+  buildMainMenu(userId: number, userName?: string): NewMessageBody {
     const greeting = userName ? `👋 Привет, **${userName}**!\n\n` : '';
     const text = `${greeting}${MAIN_TEXT}\n\n🆔 Ваш ID: \`${userId}\``;
 
@@ -49,18 +49,10 @@ export class BotPagesService {
       buttons.push([{ type: 'link', text: '📡 Наш канал', url: this.channelLink }]);
     }
 
-    const attachments: MaxAttachment[] = [];
-
-    if (imageToken) {
-      attachments.push({ type: 'image', payload: { token: imageToken } });
-    }
-
-    attachments.push({ type: 'inline_keyboard', payload: { buttons } });
-
     return {
       text,
       format: 'markdown',
-      attachments,
+      attachments: [{ type: 'inline_keyboard', payload: { buttons } }],
     };
   }
 
@@ -189,7 +181,7 @@ export class BotPagesService {
   }
 
   /** Инструкция установки — выбор устройства */
-  async buildInstructionPage(userId: number, imageToken?: string | null): Promise<NewMessageBody> {
+  async buildInstructionPage(_userId: number): Promise<NewMessageBody> {
     const text =
       `⚙️ **Инструкция по установке**\n\n` +
       `Простое подключение за 3 шага\n\n` +
@@ -211,15 +203,11 @@ export class BotPagesService {
       [{ type: 'callback', text: '◀️ Назад', payload: 'main_menu' }],
     ];
 
-    const attachments: MaxAttachment[] = [];
-
-    if (imageToken) {
-      attachments.push({ type: 'image', payload: { token: imageToken } });
-    }
-
-    attachments.push({ type: 'inline_keyboard', payload: { buttons } });
-
-    return { text, format: 'markdown', attachments };
+    return {
+      text,
+      format: 'markdown',
+      attachments: [{ type: 'inline_keyboard', payload: { buttons } }],
+    };
   }
 
   /** Инструкция для конкретного устройства */

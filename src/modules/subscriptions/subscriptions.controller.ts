@@ -7,20 +7,16 @@ import {
   Res,
   Logger,
   HttpStatus,
-  Inject,
-  forwardRef,
   Query,
   UseGuards,
-  UseInterceptors,
-  UploadedFile,
 } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation, ApiParam, ApiResponse, ApiBody, ApiQuery, ApiBearerAuth } from '@nestjs/swagger';
 import { Response } from 'express';
 import { SubscriptionsService } from './subscriptions.service';
 import { CreateSubscriptionDto, SendMessageDto } from './dto';
 import { SubscriptionSource } from '@database/entities';
 import { JwtAuthGuard } from '@modules/auth';
+import { MaxApiService } from '@modules/max-api';
 
 // API контроллер для управления подписками (с префиксом /api)
 @ApiTags('Subscriptions')
@@ -32,6 +28,7 @@ export class SubscriptionsController {
 
   constructor(
     private readonly subscriptionsService: SubscriptionsService,
+    private readonly maxApi: MaxApiService,
   ) {}
 
   @Get()
@@ -174,27 +171,82 @@ export class SubscriptionsController {
   }
 
   @Post('send-message')
-  @UseInterceptors(FileInterceptor('photo'))
-  @ApiOperation({ 
-    summary: 'Отправить сообщение пользователям', 
-    description: 'Отправляет сообщение через MAX бота. Если указан maxId - отправляет одному пользователю, иначе - рассылка всем пользователям из БД. Опционально можно приложить фото (multipart/form-data).' 
+  @ApiOperation({
+    summary: 'Отправить сообщение пользователям',
+    description:
+      'Отправляет сообщение через MAX бота. Если указан maxId — одному пользователю, иначе рассылка всем уникальным Max ID из подписок.',
   })
-  @ApiResponse({ 
-    status: 200, 
-    description: 'Результат отправки сообщения (одному пользователю)', 
-    schema: { example: { success: true, data: { sent: 1, failed: 0, errors: [] } } } 
+  @ApiBody({ type: SendMessageDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Результат отправки',
+    schema: { example: { success: true, data: { sent: 1, failed: 0, errors: [] } } },
   })
-  @ApiResponse({ 
-    status: 202, 
-    description: 'Массовая рассылка запущена в фоне', 
-    schema: { example: { success: true, message: 'Message broadcasting started in background. Check server logs for results.' } } 
-  })
-  async sendMessage(
-    @Body('message') message: string,
-    @Body('maxId') maxId: string | undefined,
-    @UploadedFile() photo?: { buffer: Buffer; originalname: string; mimetype: string },
-  ) {
-    // TODO: реализовать массовую рассылку через очередь (Bull) для всех пользователей, если max id не указан
+  async sendMessage(@Body() dto: SendMessageDto, @Res() res: Response) {
+    const text = dto.message?.trim();
+    if (!text) {
+      return res.status(HttpStatus.BAD_REQUEST).send({ success: false, message: 'Message is required' });
+    }
+
+    if (!this.maxApi.isConfigured()) {
+      return res.status(HttpStatus.SERVICE_UNAVAILABLE).send({
+        success: false,
+        message: 'MAX bot is not configured',
+      });
+    }
+
+    const maxId = dto.maxId?.trim();
+    const recipients = maxId
+      ? [maxId]
+      : (await this.subscriptionsService.getUniqueMaxIds()).filter(Boolean);
+
+    if (recipients.length === 0) {
+      return res.status(HttpStatus.BAD_REQUEST).send({
+        success: false,
+        message: maxId ? 'Invalid maxId' : 'No users to send to',
+      });
+    }
+
+    this.logger.log(
+      maxId
+        ? `Sending MAX message to user ${maxId}`
+        : `Broadcasting MAX message to ${recipients.length} users`,
+    );
+
+    const result = { sent: 0, failed: 0, errors: [] as string[] };
+
+    for (const id of recipients) {
+      const userId = parseInt(id, 10);
+      if (Number.isNaN(userId)) {
+        result.failed++;
+        result.errors.push(`${id}: invalid maxId`);
+        continue;
+      }
+
+      try {
+        const sent = await this.maxApi.sendMessage(userId, {
+          text,
+          format: 'html',
+        });
+        if (sent) {
+          result.sent++;
+        } else {
+          result.failed++;
+          result.errors.push(`${id}: send failed`);
+        }
+      } catch (error) {
+        result.failed++;
+        result.errors.push(`${id}: ${(error as Error).message}`);
+      }
+
+      // Небольшая пауза, чтобы не упереться в лимиты MAX API
+      if (recipients.length > 1) {
+        await new Promise((resolve) => setTimeout(resolve, 80));
+      }
+    }
+
+    this.logger.log(`MAX message send finished: sent=${result.sent}, failed=${result.failed}`);
+    return res.status(HttpStatus.OK).send({ success: true, data: result });
   }
 
   @Get('unsynced')

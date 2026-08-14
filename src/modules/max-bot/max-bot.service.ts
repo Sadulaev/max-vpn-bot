@@ -1,7 +1,5 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { readFileSync, existsSync } from 'fs';
-import { join } from 'path';
 import { MaxApiService } from '@modules/max-api';
 import type { MaxUpdate, MaxBotStartedUpdate, MaxMessageCreatedUpdate, MaxMessageCallbackUpdate } from '@modules/max-api';
 import { BotPagesService } from '@modules/bot-pages';
@@ -9,7 +7,6 @@ import { PlansService } from '@modules/plans';
 import { PaymentsService } from '@modules/payments';
 import { FreekassaService } from '@modules/payments';
 import { SubscriptionsService } from '@modules/subscriptions';
-import { SubscriptionSource } from '@database/entities';
 
 /** Хранит реферер для нового пользователя до момента покупки */
 const pendingReferrals = new Map<string, string>(); // userId → referrerId
@@ -17,10 +14,6 @@ const pendingReferrals = new Map<string, string>(); // userId → referrerId
 @Injectable()
 export class MaxBotService implements OnModuleInit {
   private readonly logger = new Logger(MaxBotService.name);
-  /** Токен баннерного изображения, закешированный при старте */
-  private cachedImageToken: string | null = null;
-  /** Токен изображения страницы инструкций */
-  private cachedInstructionsImageToken: string | null = null;
 
   constructor(
     private readonly maxApi: MaxApiService,
@@ -53,60 +46,6 @@ export class MaxBotService implements OnModuleInit {
       }
     } else {
       this.logger.warn('BASE_URL not set — skipping webhook registration');
-    }
-
-    // Загружаем баннерное изображение
-    await this.warmUpBannerImage();
-    await this.warmUpInstructionsImage();
-  }
-
-  /** Загружает assets/menu-page.jpg и кеширует токен */
-  private async warmUpBannerImage(): Promise<void> {
-    const imagePath = join(process.cwd(), 'assets', 'menu-page.jpg');
-
-    if (!existsSync(imagePath)) {
-      this.logger.warn(`Banner image not found at ${imagePath} — messages will be sent without image`);
-      return;
-    }
-
-    try {
-      const buffer = readFileSync(imagePath);
-      this.logger.log('Uploading banner image to MAX API...');
-      const token = await this.maxApi.uploadImage(buffer, 'menu-page.jpg');
-
-      if (token) {
-        this.cachedImageToken = token;
-        this.logger.log('Banner image uploaded and token cached');
-      } else {
-        this.logger.warn('Banner image upload returned no token — messages will be sent without image');
-      }
-    } catch (err: unknown) {
-      this.logger.error(`Failed to upload banner image: ${(err as Error)?.message}`);
-    }
-  }
-
-  /** Загружает assets/instructions-page.jpg и кеширует токен */
-  private async warmUpInstructionsImage(): Promise<void> {
-    const imagePath = join(process.cwd(), 'assets', 'instructions-page.jpg');
-
-    if (!existsSync(imagePath)) {
-      this.logger.warn(`Instructions image not found at ${imagePath} — instruction page will be sent without image`);
-      return;
-    }
-
-    try {
-      const buffer = readFileSync(imagePath);
-      this.logger.log('Uploading instructions image to MAX API...');
-      const token = await this.maxApi.uploadImage(buffer, 'instructions-page.jpg');
-
-      if (token) {
-        this.cachedInstructionsImageToken = token;
-        this.logger.log('Instructions image uploaded and token cached');
-      } else {
-        this.logger.warn('Instructions image upload returned no token — instruction page will be sent without image');
-      }
-    } catch (err: unknown) {
-      this.logger.error(`Failed to upload instructions image: ${(err as Error)?.message}`);
     }
   }
 
@@ -147,7 +86,7 @@ export class MaxBotService implements OnModuleInit {
       }
     }
 
-    const body = this.pages.buildMainMenu(userId, userName, this.cachedImageToken);
+    const body = this.pages.buildMainMenu(userId, userName);
     await this.maxApi.sendMessage(userId, body);
   }
 
@@ -162,13 +101,13 @@ export class MaxBotService implements OnModuleInit {
     const text = (msg.body?.text ?? '').trim();
 
     if (text === '/start' || text === 'start' || text === 'Начать') {
-      const body = this.pages.buildMainMenu(userId, msg.sender.name, this.cachedImageToken);
+      const body = this.pages.buildMainMenu(userId, msg.sender.name);
       await this.maxApi.sendMessage(userId, body);
       return;
     }
 
     // Любое другое сообщение → главное меню
-    const body = this.pages.buildMainMenu(userId, msg.sender.name, this.cachedImageToken);
+    const body = this.pages.buildMainMenu(userId, msg.sender.name);
     await this.maxApi.sendMessage(userId, body);
   }
 
@@ -233,7 +172,7 @@ export class MaxBotService implements OnModuleInit {
   // ─── Handlers ───
 
   private async showMainMenu(userId: number, userName?: string): Promise<void> {
-    const body = this.pages.buildMainMenu(userId, userName, this.cachedImageToken);
+    const body = this.pages.buildMainMenu(userId, userName);
     await this.maxApi.sendMessage(userId, body);
   }
 
@@ -248,7 +187,7 @@ export class MaxBotService implements OnModuleInit {
   }
 
   private async showInstruction(userId: number): Promise<void> {
-    const body = await this.pages.buildInstructionPage(userId, this.cachedInstructionsImageToken);
+    const body = await this.pages.buildInstructionPage(userId);
     await this.maxApi.sendMessage(userId, body);
   }
 
