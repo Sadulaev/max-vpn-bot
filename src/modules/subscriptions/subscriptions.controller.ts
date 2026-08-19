@@ -7,6 +7,7 @@ import {
   Res,
   Logger,
   HttpStatus,
+  HttpException,
   Query,
   UseGuards,
 } from '@nestjs/common';
@@ -182,17 +183,14 @@ export class SubscriptionsController {
     description: 'Результат отправки',
     schema: { example: { success: true, data: { sent: 1, failed: 0, errors: [] } } },
   })
-  async sendMessage(@Body() dto: SendMessageDto, @Res() res: Response) {
+  async sendMessage(@Body() dto: SendMessageDto) {
     const text = dto.message?.trim();
     if (!text) {
-      return res.status(HttpStatus.BAD_REQUEST).send({ success: false, message: 'Message is required' });
+      throw new HttpException({ success: false, message: 'Message is required' }, HttpStatus.BAD_REQUEST);
     }
 
     if (!this.maxApi.isConfigured()) {
-      return res.status(HttpStatus.SERVICE_UNAVAILABLE).send({
-        success: false,
-        message: 'MAX bot is not configured',
-      });
+      throw new HttpException({ success: false, message: 'MAX bot is not configured' }, HttpStatus.SERVICE_UNAVAILABLE);
     }
 
     const maxId = dto.maxId?.trim();
@@ -201,10 +199,10 @@ export class SubscriptionsController {
       : (await this.subscriptionsService.getUniqueMaxIds()).filter(Boolean);
 
     if (recipients.length === 0) {
-      return res.status(HttpStatus.BAD_REQUEST).send({
-        success: false,
-        message: maxId ? 'Invalid maxId' : 'No users to send to',
-      });
+      throw new HttpException(
+        { success: false, message: maxId ? 'Invalid maxId' : 'No users to send to' },
+        HttpStatus.BAD_REQUEST,
+      );
     }
 
     this.logger.log(
@@ -239,14 +237,13 @@ export class SubscriptionsController {
         result.errors.push(`${id}: ${(error as Error).message}`);
       }
 
-      // Небольшая пауза, чтобы не упереться в лимиты MAX API
       if (recipients.length > 1) {
         await new Promise((resolve) => setTimeout(resolve, 80));
       }
     }
 
     this.logger.log(`MAX message send finished: sent=${result.sent}, failed=${result.failed}`);
-    return res.status(HttpStatus.OK).send({ success: true, data: result });
+    return { success: true, data: result };
   }
 
   @Get('unsynced')
