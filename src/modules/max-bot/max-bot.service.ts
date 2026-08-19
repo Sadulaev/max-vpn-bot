@@ -165,6 +165,16 @@ export class MaxBotService implements OnModuleInit {
       return;
     }
 
+    if (payload === 'privacy_policy') {
+      await this.showPrivacyPolicy(userId);
+      return;
+    }
+
+    if (payload === 'terms_of_service') {
+      await this.showTermsOfService(userId);
+      return;
+    }
+
     // Неизвестный payload — возвращаем главное меню
     await this.showMainMenu(userId, callback.user.name);
   }
@@ -203,6 +213,16 @@ export class MaxBotService implements OnModuleInit {
 
   private async showSupport(userId: number): Promise<void> {
     const body = this.pages.buildSupportPage();
+    await this.maxApi.sendMessage(userId, body);
+  }
+
+  private async showPrivacyPolicy(userId: number): Promise<void> {
+    const body = this.pages.buildPrivacyPolicyPage();
+    await this.maxApi.sendMessage(userId, body);
+  }
+
+  private async showTermsOfService(userId: number): Promise<void> {
+    const body = this.pages.buildTermsOfServicePage();
     await this.maxApi.sendMessage(userId, body);
   }
 
