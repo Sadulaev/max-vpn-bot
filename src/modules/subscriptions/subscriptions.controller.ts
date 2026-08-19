@@ -183,8 +183,7 @@ export class SubscriptionsController {
     description: 'Результат отправки',
     schema: { example: { success: true, data: { sent: 1, failed: 0, errors: [] } } },
   })
-  async sendMessage(@Body() dto: any) {
-    this.logger.log(`sendMessage received body: ${JSON.stringify(dto)}`);
+  async sendMessage(@Body() dto: SendMessageDto) {
     const text = dto.message?.trim();
     if (!text) {
       throw new HttpException({ success: false, message: 'Message is required' }, HttpStatus.BAD_REQUEST);
