@@ -165,13 +165,16 @@ export class BotPagesService {
       };
     }
 
-    const keySection = subscriptionUrl
-      ? `\n\n🔑 **Ключ подписки:**\n\`${subscriptionUrl}\``
+    const displayUrl = subPageUrl || subscriptionUrl;
+    const keySection = displayUrl
+      ? `\n\n🔑 **Ключ подписки:**\n\`${displayUrl}\``
       : '';
 
     const buttons: MaxButtonRow[] = [];
     if (subPageUrl) {
       buttons.push([{ type: 'link', text: '🔑 Открыть страницу подписки', url: subPageUrl }]);
+    } else if (subscriptionUrl) {
+      buttons.push([{ type: 'link', text: '🔑 Открыть страницу подписки', url: subscriptionUrl }]);
     }
     buttons.push(backButton);
 
@@ -412,17 +415,23 @@ export class BotPagesService {
     subPageUrl: string | null,
     subscriptionUrl: string | null,
   ): NewMessageBody {
+    const displayUrl = subPageUrl || subscriptionUrl;
+    const keySection = displayUrl
+      ? `\n\n🔑 **Ключ подписки:**\n\`${displayUrl}\``
+      : '';
+
     const text =
       `🎉 **Подписка успешно активирована!**\n\n` +
-      `Тариф: **${planLabel}**\n\n` +
-      `На вашей странице подписки вы найдёте ключ доступа и пошаговую инструкцию по подключению.`;
+      `Тариф: **${planLabel}**` +
+      keySection +
+      `\n\nНа странице подписки вы найдёте инструкцию по подключению.`;
 
     const buttons: MaxButtonRow[] = [];
 
     if (subPageUrl) {
       buttons.push([{ type: 'link', text: '🔑 Открыть страницу подписки', url: subPageUrl }]);
     } else if (subscriptionUrl) {
-      buttons.push([{ type: 'clipboard', text: '📋 Скопировать ключ подписки', payload: subscriptionUrl }]);
+      buttons.push([{ type: 'link', text: '🔑 Открыть страницу подписки', url: subscriptionUrl }]);
     }
 
     buttons.push([{ type: 'callback', text: '◀️ Главное меню', payload: 'main_menu' }]);

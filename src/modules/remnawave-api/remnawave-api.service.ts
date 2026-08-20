@@ -42,6 +42,13 @@ export class RemnawaveApiService implements OnModuleInit {
     if (!this.apiToken) {
       this.logger.warn('REMNAWAVE_API_TOKEN is not set — Remnawave integration disabled');
     }
+    if (this.apiUrl && !this.subPageUrl) {
+      this.logger.warn(
+        'REMNAWAVE_SUB_PAGE_URL is not set — users will see REMNAWAVE_API_URL/api/sub/... links',
+      );
+    } else if (this.subPageUrl) {
+      this.logger.log(`Remnawave public sub page: ${this.subPageUrl}/{shortUuid}`);
+    }
   }
 
   /** Проверить, настроен ли Remnawave */
@@ -337,19 +344,25 @@ export class RemnawaveApiService implements OnModuleInit {
 
   // ─── Subscription URLs ───
 
-  /** Построить URL подписки для V2Ray клиента */
+  /**
+   * Публичный URL подписки для клиентов / пользователей.
+   * Если задан REMNAWAVE_SUB_PAGE_URL — используем его (не светим admin API).
+   */
   buildSubscriptionUrl(shortUuid: string | null | undefined): string | null {
     if (!shortUuid) return null;
+    if (this.subPageUrl) {
+      return `${this.subPageUrl}/${shortUuid}`;
+    }
     return `${this.apiUrl}/api/sub/${shortUuid}`;
   }
 
-  /** Построить URL страницы подписки (для показа пользователю) */
+  /** URL страницы подписки (для кнопки в боте) */
   buildSubPageUrl(shortUuid: string | null | undefined): string | null {
     if (!shortUuid) return null;
     if (this.subPageUrl) {
       return `${this.subPageUrl}/${shortUuid}`;
     }
-    // Фоллбэк: используем API URL + /api/sub/{shortUuid}/info
+    // Фоллбэк: API URL + /api/sub/{shortUuid}/info
     return `${this.apiUrl}/api/sub/${shortUuid}/info`;
   }
 

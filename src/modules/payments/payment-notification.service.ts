@@ -41,8 +41,9 @@ export class PaymentNotificationService {
 
     buttons.push([{ type: 'callback', text: '◀️ Главное меню', payload: 'main_menu' }]);
 
-    const keySection = subscriptionUrl
-      ? `\n\n🔑 **Ключ подписки:**\n\`${subscriptionUrl}\``
+    const displayUrl = subPageUrl || subscriptionUrl;
+    const keySection = displayUrl
+      ? `\n\n🔑 **Ключ подписки:**\n\`${displayUrl}\``
       : '';
 
     const body: NewMessageBody = {
