@@ -65,6 +65,18 @@ export class RemnawaveApiService implements OnModuleInit {
 
   // ─── Users ───
 
+  /** Числовой id Remnawave (в колонке remnawaveUuid теперь храним его как строку) */
+  parseNumericUserId(value: string | null | undefined): number | null {
+    if (!value || !/^\d+$/.test(value)) return null;
+    const id = Number(value);
+    return Number.isFinite(id) ? id : null;
+  }
+
+  /** Ключ для сохранения в remnawaveUuid после ответа Remnawave */
+  getStoredUserId(user: RemnawaveUserResponse): string {
+    return String(user.id);
+  }
+
   /** Создать пользователя в Remnawave */
   async createUser(dto: RemnawaveUserCreate): Promise<RemnawaveUserResponse> {
     const headers = await this.authHeaders();
@@ -84,7 +96,7 @@ export class RemnawaveApiService implements OnModuleInit {
     return data.response;
   }
 
-  /** Обновить пользователя (по uuid или username) */
+  /** Обновить пользователя (по id или username) */
   async updateUser(dto: RemnawaveUserUpdate): Promise<RemnawaveUserResponse> {
     const headers = await this.authHeaders();
 
@@ -103,11 +115,15 @@ export class RemnawaveApiService implements OnModuleInit {
     return data.response;
   }
 
-  /** Получить пользователя по UUID */
-  async getUserByUuid(uuid: string): Promise<RemnawaveUserResponse | null> {
+  /**
+   * Получить пользователя по числовому id.
+   * Новые версии Remnawave: GET /api/users/by-id/:id
+   * (GET /api/users/:userId ожидает number — UUID даёт 400 NaN)
+   */
+  async getUserById(id: number): Promise<RemnawaveUserResponse | null> {
     const headers = await this.authHeaders();
 
-    const res = await fetch(`${this.apiUrl}/api/users/${encodeURIComponent(uuid)}`, {
+    const res = await fetch(`${this.apiUrl}/api/users/by-id/${id}`, {
       method: 'GET',
       headers,
     });
@@ -116,11 +132,21 @@ export class RemnawaveApiService implements OnModuleInit {
 
     if (!res.ok) {
       const text = await res.text().catch(() => '');
-      throw new Error(`Remnawave getUserByUuid failed (${res.status}): ${text}`);
+      throw new Error(`Remnawave getUserById failed (${res.status}): ${text}`);
     }
 
     const data: RemnawaveUserSingleResponse = await res.json();
     return data.response;
+  }
+
+  /**
+   * Back-compat: remnawaveUuid раньше был UUID, теперь — числовой id строкой.
+   * Старые UUID больше нельзя запрашивать через /api/users/:id.
+   */
+  async getUserByUuid(idOrUuid: string): Promise<RemnawaveUserResponse | null> {
+    const id = this.parseNumericUserId(idOrUuid);
+    if (id == null) return null;
+    return this.getUserById(id);
   }
 
   /** Получить пользователя по username */
@@ -163,11 +189,19 @@ export class RemnawaveApiService implements OnModuleInit {
     return data.response;
   }
 
-  /** Удалить пользователя по UUID */
-  async deleteUser(uuid: string): Promise<boolean> {
+  /** Удалить пользователя по числовому id (или строке с числом) */
+  async deleteUser(idOrUuid: string): Promise<boolean> {
+    const id = this.parseNumericUserId(idOrUuid);
+    if (id == null) {
+      this.logger.warn(
+        `Remnawave deleteUser skipped: expected numeric id, got "${idOrUuid}"`,
+      );
+      return false;
+    }
+
     const headers = await this.authHeaders();
 
-    const res = await fetch(`${this.apiUrl}/api/users/${encodeURIComponent(uuid)}`, {
+    const res = await fetch(`${this.apiUrl}/api/users/${id}`, {
       method: 'DELETE',
       headers,
     });
@@ -179,8 +213,15 @@ export class RemnawaveApiService implements OnModuleInit {
       throw new Error(`Remnawave deleteUser failed (${res.status}): ${text}`);
     }
 
-    const data: RemnawaveDeleteResponse = await res.json();
-    return data.response.isDeleted;
+    // Новые версии отдают 204 No Content
+    if (res.status === 204) return true;
+
+    try {
+      const data: RemnawaveDeleteResponse = await res.json();
+      return data.response?.isDeleted ?? true;
+    } catch {
+      return true;
+    }
   }
 
   /** Получить список всех пользователей с пагинацией */
@@ -203,9 +244,14 @@ export class RemnawaveApiService implements OnModuleInit {
   }
 
   /** Включить пользователя (статус ACTIVE) */
-  async enableUser(uuid: string): Promise<void> {
+  async enableUser(idOrUuid: string): Promise<void> {
+    const id = this.parseNumericUserId(idOrUuid);
+    if (id == null) {
+      throw new Error(`Remnawave enableUser expects numeric id, got "${idOrUuid}"`);
+    }
+
     const headers = await this.authHeaders();
-    const res = await fetch(`${this.apiUrl}/api/users/${encodeURIComponent(uuid)}/actions/enable`, {
+    const res = await fetch(`${this.apiUrl}/api/users/${id}/actions/enable`, {
       method: 'POST',
       headers,
     });
@@ -216,9 +262,14 @@ export class RemnawaveApiService implements OnModuleInit {
   }
 
   /** Сбросить трафик пользователя */
-  async resetTraffic(uuid: string): Promise<void> {
+  async resetTraffic(idOrUuid: string): Promise<void> {
+    const id = this.parseNumericUserId(idOrUuid);
+    if (id == null) {
+      throw new Error(`Remnawave resetTraffic expects numeric id, got "${idOrUuid}"`);
+    }
+
     const headers = await this.authHeaders();
-    const res = await fetch(`${this.apiUrl}/api/users/${encodeURIComponent(uuid)}/actions/reset-traffic`, {
+    const res = await fetch(`${this.apiUrl}/api/users/${id}/actions/reset-traffic`, {
       method: 'POST',
       headers,
     });

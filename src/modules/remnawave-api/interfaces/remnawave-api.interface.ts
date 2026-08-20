@@ -24,15 +24,22 @@ export interface RemnawaveUserTraffic {
 }
 
 export interface RemnawaveUserResponse {
-  uuid: string;
+  /** Numeric Remnawave user id (primary key in newer API) */
   id: number;
+  /**
+   * Legacy UUID — removed in newer Remnawave versions.
+   * Kept optional for older panels.
+   */
+  uuid?: string;
   shortUuid: string;
   username: string;
   status: RemnawaveUserStatus;
   trafficLimitBytes: number;
   trafficLimitStrategy: string;
   expireAt: string;
-  maxId: number | null;
+  telegramId?: number | null;
+  /** @deprecated use telegramId */
+  maxId?: number | null;
   email: string | null;
   description: string | null;
   tag: string | null;
@@ -80,7 +87,7 @@ export interface RemnawaveUserCreate {
   trafficLimitStrategy?: 'NO_RESET' | 'DAY' | 'WEEK' | 'MONTH' | 'MONTH_ROLLING';
   description?: string;
   tag?: string | null;
-  maxId?: number | null;
+  telegramId?: number | null;
   activeInternalSquads?: string[];
   hwidDeviceLimit?: number | null;
 }
@@ -88,15 +95,15 @@ export interface RemnawaveUserCreate {
 export interface RemnawaveUserUpdate {
   /** Identify user by username */
   username?: string;
-  /** Or identify by UUID (higher priority) */
-  uuid?: string;
+  /** Or identify by numeric Remnawave id */
+  id?: number;
   status?: 'ACTIVE' | 'DISABLED';
   trafficLimitBytes?: number;
   trafficLimitStrategy?: 'NO_RESET' | 'DAY' | 'WEEK' | 'MONTH' | 'MONTH_ROLLING';
   expireAt?: string;
   description?: string | null;
   tag?: string | null;
-  maxId?: number | null;
+  telegramId?: number | null;
   activeInternalSquads?: string[];
   hwidDeviceLimit?: number | null;
 }

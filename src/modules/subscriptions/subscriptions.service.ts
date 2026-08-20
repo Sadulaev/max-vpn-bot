@@ -40,6 +40,11 @@ export class SubscriptionsService {
     return subscriptionId.replace(/-/g, '');
   }
 
+  /** Id пользователя Remnawave для колонки remnawaveUuid */
+  private storeRemnawaveUserId(user: RemnawaveUserResponse): string {
+    return this.remnawaveApi.getStoredUserId(user);
+  }
+
   private async findReusableSubscription(maxId?: string): Promise<Subscription | null> {
     if (!maxId) {
       return null;
@@ -70,7 +75,8 @@ export class SubscriptionsService {
     const squadUuid = this.remnawaveApi.getSquadUuid();
     const tag = this.remnawaveApi.getTag();
     const updatePayload: Parameters<typeof this.remnawaveApi.updateUser>[0] = {
-      uuid: remnawaveUser.uuid,
+      id: remnawaveUser.id,
+      username: remnawaveUser.username,
       status: 'ACTIVE',
       tag,
       activeInternalSquads: squadUuid ? [squadUuid] : [],
@@ -85,11 +91,12 @@ export class SubscriptionsService {
 
     await this.remnawaveApi.updateUser(updatePayload);
 
-    if (!subscription.remnawaveUuid) {
-      subscription.remnawaveUuid = remnawaveUser.uuid;
-    }
+    subscription.remnawaveUuid = this.storeRemnawaveUserId(remnawaveUser);
     if (!subscription.shortUuid) {
       subscription.shortUuid = remnawaveUser.shortUuid;
+    }
+    if (!subscription.username) {
+      subscription.username = remnawaveUser.username;
     }
 
     await this.subscriptionRepo.save(subscription);
@@ -186,13 +193,13 @@ export class SubscriptionsService {
         trafficLimitStrategy: 'NO_RESET',
         description,
         tag,
-        maxId: maxIdNum,
+        telegramId: Number.isFinite(maxIdNum) ? maxIdNum : null,
         activeInternalSquads: squadUuid ? [squadUuid] : [],
         hwidDeviceLimit: 5,
       });
 
       subscription.username = panelUsername;
-      subscription.remnawaveUuid = user.uuid;
+      subscription.remnawaveUuid = this.storeRemnawaveUserId(user);
       subscription.shortUuid = user.shortUuid;
       await this.subscriptionRepo.save(subscription);
 
@@ -200,7 +207,7 @@ export class SubscriptionsService {
       const subPageUrl = this.remnawaveApi.buildSubPageUrl(user.shortUuid);
 
       this.logger.log(
-        `Subscription ${subscription.id} created → Remnawave user "${panelUsername}" (${user.uuid}), expires ${endDate.toISOString()}`,
+        `Subscription ${subscription.id} created → Remnawave user "${panelUsername}" (id=${user.id}), expires ${endDate.toISOString()}`,
       );
 
       return {
@@ -319,12 +326,27 @@ export class SubscriptionsService {
     const sub = await this.subscriptionRepo.findOne({ where: { id: subscriptionId } });
     if (!sub) return null;
 
-    if (sub.remnawaveUuid) {
-      return this.remnawaveApi.getUserByUuid(sub.remnawaveUuid);
-    }
     if (sub.username) {
-      return this.remnawaveApi.getUserByUsername(sub.username);
+      const byUsername = await this.remnawaveApi.getUserByUsername(sub.username);
+      if (byUsername) return byUsername;
     }
+
+    if (sub.shortUuid) {
+      const byShort = await this.remnawaveApi.getUserByShortUuid(sub.shortUuid);
+      if (byShort) return byShort;
+    }
+
+    const numericId = this.remnawaveApi.parseNumericUserId(sub.remnawaveUuid);
+    if (numericId != null) {
+      const byId = await this.remnawaveApi.getUserById(numericId);
+      if (byId) return byId;
+    }
+
+    const panelUsername = this.buildPanelUsername(sub.id);
+    if (panelUsername !== sub.username) {
+      return this.remnawaveApi.getUserByUsername(panelUsername);
+    }
+
     return null;
   }
 
@@ -338,10 +360,7 @@ export class SubscriptionsService {
     const results: Subscription[] = [];
     await Promise.all(
       subs.map(async (sub) => {
-        if (!sub.username) return;
-        const ru = sub.remnawaveUuid
-          ? await this.remnawaveApi.getUserByUuid(sub.remnawaveUuid)
-          : await this.remnawaveApi.getUserByUsername(sub.username);
+        const ru = await this.getRemnawaveUser(sub.id);
         if (ru?.status === 'ACTIVE') {
           results.push(sub);
         }
@@ -377,7 +396,7 @@ export class SubscriptionsService {
     // Обновляем shortUuid и remnawaveUuid если не были сохранены
     if (!subscription.shortUuid || !subscription.remnawaveUuid) {
       subscription.shortUuid = ru.shortUuid;
-      subscription.remnawaveUuid = ru.uuid;
+      subscription.remnawaveUuid = this.storeRemnawaveUserId(ru);
       await this.subscriptionRepo.save(subscription);
     }
 
@@ -398,7 +417,7 @@ export class SubscriptionsService {
     if (!ru) return null;
 
     subscription.shortUuid = ru.shortUuid;
-    subscription.remnawaveUuid = ru.uuid;
+    subscription.remnawaveUuid = this.storeRemnawaveUserId(ru);
     await this.subscriptionRepo.save(subscription);
 
     return this.remnawaveApi.buildSubPageUrl(ru.shortUuid);
@@ -425,7 +444,8 @@ export class SubscriptionsService {
         const newExpire = new Date(base.getTime() + days * 24 * 60 * 60 * 1000);
 
         await this.remnawaveApi.updateUser({
-          uuid: ru.uuid,
+          id: ru.id,
+          username: ru.username,
           expireAt: newExpire.toISOString(),
           status: 'ACTIVE',
         });
@@ -434,11 +454,12 @@ export class SubscriptionsService {
         );
 
         // Обновляем поля если отсутствуют
-        if (!subscription.remnawaveUuid) {
-          subscription.remnawaveUuid = ru.uuid;
-        }
+        subscription.remnawaveUuid = this.storeRemnawaveUserId(ru);
         if (!subscription.shortUuid) {
           subscription.shortUuid = ru.shortUuid;
+        }
+        if (!subscription.username) {
+          subscription.username = ru.username;
         }
       }
 
@@ -506,14 +527,15 @@ export class SubscriptionsService {
           description: sub.id,
           tag,
           activeInternalSquads: squadUuid ? [squadUuid] : [],
+          hwidDeviceLimit: 5,
         });
 
-      sub.username = panelUsername;
-        sub.remnawaveUuid = user.uuid;
+        sub.username = panelUsername;
+        sub.remnawaveUuid = this.storeRemnawaveUserId(user);
         sub.shortUuid = user.shortUuid;
         await this.subscriptionRepo.save(sub);
         synced++;
-        this.logger.log(`Synced subscription ${sub.id} → "${panelUsername}" (${user.uuid})`);
+        this.logger.log(`Synced subscription ${sub.id} → "${panelUsername}" (id=${user.id})`);
       } catch (error) {
         failed++;
         const msg = error instanceof Error ? error.message : String(error);
@@ -531,21 +553,22 @@ export class SubscriptionsService {
     return new Date(startTs + sub.days * 24 * 60 * 60 * 1000);
   }
 
-  /** Найти пользователя в Remnawave по uuid / username / shortUuid */
+  /** Найти пользователя в Remnawave по username / shortUuid / numeric id */
   private async findExistingRemnawaveUser(
     sub: Subscription,
   ): Promise<RemnawaveUserResponse | null> {
-    if (sub.remnawaveUuid) {
-      const byUuid = await this.remnawaveApi.getUserByUuid(sub.remnawaveUuid);
-      if (byUuid) return byUuid;
-    }
-
     const username = sub.username || this.buildPanelUsername(sub.id);
     const byUsername = await this.remnawaveApi.getUserByUsername(username);
     if (byUsername) return byUsername;
 
     if (sub.shortUuid) {
-      return this.remnawaveApi.getUserByShortUuid(sub.shortUuid);
+      const byShort = await this.remnawaveApi.getUserByShortUuid(sub.shortUuid);
+      if (byShort) return byShort;
+    }
+
+    const numericId = this.remnawaveApi.parseNumericUserId(sub.remnawaveUuid);
+    if (numericId != null) {
+      return this.remnawaveApi.getUserById(numericId);
     }
 
     return null;
@@ -599,8 +622,9 @@ export class SubscriptionsService {
             sub.username = existing.username;
             dirty = true;
           }
-          if (sub.remnawaveUuid !== existing.uuid) {
-            sub.remnawaveUuid = existing.uuid;
+          const storedId = this.storeRemnawaveUserId(existing);
+          if (sub.remnawaveUuid !== storedId) {
+            sub.remnawaveUuid = storedId;
             dirty = true;
           }
           if (sub.shortUuid !== existing.shortUuid) {
@@ -628,24 +652,26 @@ export class SubscriptionsService {
           trafficLimitStrategy: 'NO_RESET',
           description,
           tag,
-          maxId: Number.isFinite(maxIdNum) ? maxIdNum : null,
+          telegramId: Number.isFinite(maxIdNum as number) ? maxIdNum : null,
           activeInternalSquads: squadUuid ? [squadUuid] : [],
           hwidDeviceLimit: 5,
         });
 
         sub.username = panelUsername;
-        sub.remnawaveUuid = user.uuid;
+        sub.remnawaveUuid = this.storeRemnawaveUserId(user);
         sub.shortUuid = user.shortUuid;
         await this.subscriptionRepo.save(sub);
 
         restored++;
         this.logger.log(
-          `Restored subscription ${sub.id} → "${panelUsername}" (${user.uuid}), expires ${expireDate.toISOString()}`,
+          `Restored subscription ${sub.id} → "${panelUsername}" (id=${user.id}), expires ${expireDate.toISOString()}`,
         );
       } catch (error) {
         failed++;
         const msg = error instanceof Error ? error.message : String(error);
-        errors.push(`${sub.id}: ${msg}`);
+        if (errors.length < 50) {
+          errors.push(`${sub.id}: ${msg}`);
+        }
         this.logger.warn(`Failed to restore ${sub.id}: ${msg}`);
       }
     }
@@ -666,20 +692,30 @@ export class SubscriptionsService {
     if (!subscription) throw new NotFoundException('Subscription not found');
 
     let marzbanDeleted = false;
-    if (subscription.remnawaveUuid) {
+    const numericId = this.remnawaveApi.parseNumericUserId(subscription.remnawaveUuid);
+    if (numericId != null) {
       try {
-        marzbanDeleted = await this.remnawaveApi.deleteUser(subscription.remnawaveUuid);
+        marzbanDeleted = await this.remnawaveApi.deleteUser(String(numericId));
       } catch (error) {
-        this.logger.warn(`Failed to delete Remnawave user "${subscription.remnawaveUuid}":`, error);
+        this.logger.warn(`Failed to delete Remnawave user id="${numericId}":`, error);
       }
-    } else if (subscription.username) {
+    } else {
       try {
-        const ru = await this.remnawaveApi.getUserByUsername(subscription.username);
+        const ru =
+          (subscription.username
+            ? await this.remnawaveApi.getUserByUsername(subscription.username)
+            : null) ??
+          (subscription.shortUuid
+            ? await this.remnawaveApi.getUserByShortUuid(subscription.shortUuid)
+            : null);
         if (ru) {
-          marzbanDeleted = await this.remnawaveApi.deleteUser(ru.uuid);
+          marzbanDeleted = await this.remnawaveApi.deleteUser(String(ru.id));
         }
       } catch (error) {
-        this.logger.warn(`Failed to delete Remnawave user by username "${subscription.username}":`, error);
+        this.logger.warn(
+          `Failed to delete Remnawave user by username/shortUuid for ${subscriptionId}:`,
+          error,
+        );
       }
     }
 
@@ -698,13 +734,19 @@ export class SubscriptionsService {
     const subscription = await this.subscriptionRepo.findOne({ where: { id: subscriptionId } });
     if (!subscription) throw new NotFoundException('Subscription not found');
 
-    const userUuid = subscription.remnawaveUuid;
-    if (!userUuid) {
-      this.logger.warn(`Subscription ${subscriptionId} has no remnawaveUuid, skipping hwidDeviceLimit update`);
+    const ru = await this.getRemnawaveUser(subscriptionId);
+    if (!ru) {
+      this.logger.warn(`Subscription ${subscriptionId} not found in Remnawave, skipping hwidDeviceLimit update`);
       return;
     }
 
-    await this.remnawaveApi.updateUser({ uuid: userUuid, hwidDeviceLimit: newLimit });
+    await this.remnawaveApi.updateUser({
+      id: ru.id,
+      username: ru.username,
+      hwidDeviceLimit: newLimit,
+    });
+    subscription.remnawaveUuid = this.storeRemnawaveUserId(ru);
+    await this.subscriptionRepo.save(subscription);
     this.logger.log(`Subscription ${subscriptionId}: hwidDeviceLimit updated to ${newLimit}`);
   }
 }
