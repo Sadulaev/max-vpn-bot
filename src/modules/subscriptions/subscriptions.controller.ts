@@ -262,6 +262,19 @@ export class SubscriptionsController {
     return { success: true, data: result };
   }
 
+  @Post('restore')
+  @ApiOperation({
+    summary: 'Восстановить подписки в Remnawave',
+    description:
+      'Пересоздаёт в Remnawave всех локально неистёкших подписок, которых там нет (после потери БД Remnawave). Сохраняет shortUuid.',
+  })
+  @ApiResponse({ status: 200, description: 'Результат восстановления' })
+  async restoreSubscriptions() {
+    this.logger.log('Starting Remnawave restore for non-expired subscriptions...');
+    const result = await this.subscriptionsService.restoreMissingToRemnawave();
+    return { success: true, data: result };
+  }
+
   @Post(':id/delete')
   @ApiOperation({ 
     summary: 'Удалить подписку', 

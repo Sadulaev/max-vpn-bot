@@ -526,6 +526,136 @@ export class SubscriptionsService {
     return { synced, failed, errors };
   }
 
+  private getLocalExpireDate(sub: Subscription): Date {
+    const startTs = new Date(sub.startDate).getTime();
+    return new Date(startTs + sub.days * 24 * 60 * 60 * 1000);
+  }
+
+  /** Найти пользователя в Remnawave по uuid / username / shortUuid */
+  private async findExistingRemnawaveUser(
+    sub: Subscription,
+  ): Promise<RemnawaveUserResponse | null> {
+    if (sub.remnawaveUuid) {
+      const byUuid = await this.remnawaveApi.getUserByUuid(sub.remnawaveUuid);
+      if (byUuid) return byUuid;
+    }
+
+    const username = sub.username || this.buildPanelUsername(sub.id);
+    const byUsername = await this.remnawaveApi.getUserByUsername(username);
+    if (byUsername) return byUsername;
+
+    if (sub.shortUuid) {
+      return this.remnawaveApi.getUserByShortUuid(sub.shortUuid);
+    }
+
+    return null;
+  }
+
+  /**
+   * Восстановить в Remnawave всех локально неистёкших подписок,
+   * которых там нет (например после потери БД Remnawave).
+   * Сохраняет shortUuid, чтобы старые ссылки подписки продолжали работать.
+   */
+  async restoreMissingToRemnawave(): Promise<{
+    restored: number;
+    skipped: number;
+    failed: number;
+    errors: string[];
+  }> {
+    if (!this.remnawaveApi.isConfigured()) {
+      return {
+        restored: 0,
+        skipped: 0,
+        failed: 0,
+        errors: ['Remnawave not configured'],
+      };
+    }
+
+    const now = Date.now();
+    const all = await this.subscriptionRepo.find({ order: { createdAt: 'DESC' } });
+    const candidates = all.filter((sub) => this.getLocalExpireDate(sub).getTime() > now);
+
+    let restored = 0;
+    let skipped = 0;
+    let failed = 0;
+    const errors: string[] = [];
+
+    const squadUuid = this.remnawaveApi.getSquadUuid();
+    const tag = this.remnawaveApi.getTag();
+
+    this.logger.log(
+      `Restore Remnawave: ${candidates.length} non-expired local subscriptions to check`,
+    );
+
+    for (const sub of candidates) {
+      const panelUsername = sub.username || this.buildPanelUsername(sub.id);
+      const expireDate = this.getLocalExpireDate(sub);
+
+      try {
+        const existing = await this.findExistingRemnawaveUser(sub);
+        if (existing) {
+          let dirty = false;
+          if (sub.username !== existing.username) {
+            sub.username = existing.username;
+            dirty = true;
+          }
+          if (sub.remnawaveUuid !== existing.uuid) {
+            sub.remnawaveUuid = existing.uuid;
+            dirty = true;
+          }
+          if (sub.shortUuid !== existing.shortUuid) {
+            sub.shortUuid = existing.shortUuid;
+            dirty = true;
+          }
+          if (dirty) {
+            await this.subscriptionRepo.save(sub);
+          }
+          skipped++;
+          continue;
+        }
+
+        const description = sub.name
+          ? `${sub.id} | ${sub.name}`
+          : sub.id;
+        const maxIdNum = sub.maxId ? parseInt(sub.maxId, 10) : null;
+
+        const user = await this.remnawaveApi.createUser({
+          username: panelUsername,
+          expireAt: expireDate.toISOString(),
+          status: 'ACTIVE',
+          ...(sub.shortUuid ? { shortUuid: sub.shortUuid } : {}),
+          trafficLimitBytes: 0,
+          trafficLimitStrategy: 'NO_RESET',
+          description,
+          tag,
+          maxId: Number.isFinite(maxIdNum) ? maxIdNum : null,
+          activeInternalSquads: squadUuid ? [squadUuid] : [],
+          hwidDeviceLimit: 5,
+        });
+
+        sub.username = panelUsername;
+        sub.remnawaveUuid = user.uuid;
+        sub.shortUuid = user.shortUuid;
+        await this.subscriptionRepo.save(sub);
+
+        restored++;
+        this.logger.log(
+          `Restored subscription ${sub.id} → "${panelUsername}" (${user.uuid}), expires ${expireDate.toISOString()}`,
+        );
+      } catch (error) {
+        failed++;
+        const msg = error instanceof Error ? error.message : String(error);
+        errors.push(`${sub.id}: ${msg}`);
+        this.logger.warn(`Failed to restore ${sub.id}: ${msg}`);
+      }
+    }
+
+    this.logger.log(
+      `Restore complete: ${restored} restored, ${skipped} skipped, ${failed} failed`,
+    );
+    return { restored, skipped, failed, errors };
+  }
+
   // ─── Удаление ───
 
   async deleteSubscription(subscriptionId: string): Promise<{
