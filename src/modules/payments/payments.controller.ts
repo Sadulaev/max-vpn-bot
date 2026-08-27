@@ -186,16 +186,22 @@ export class PaymentsController {
         this.logger.error(`Failed to notify device slots success for ${session.maxId}:`, error);
       }
       // Канальное уведомление о покупке слотов
-      const now = new Date();
-      const formattedDate = now.toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-      const slotMessage = [
-        '🖥 <b>Куплены слоты устройств!</b>\n',
+      const formattedDate = new Date().toLocaleString('ru-RU', {
+        timeZone: 'Europe/Moscow',
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+      await this.notificationService.sendChannelPurchaseNotification([
+        '🖥 <b>Куплены слоты устройств!</b>',
+        '',
         `🆔 <b>Max ID:</b> <code>${session.maxId}</code>`,
         `📦 <b>Слотов:</b> ${planMeta.slotsCount} (новый лимит: ${planMeta.newLimit})`,
         `💵 <b>Цена:</b> ${session.amount} ₽`,
-        `📅 <b>Дата:</b> ${formattedDate}`,
-      ].join('\n');
-      await this.notificationService.sendChannelNotification(slotMessage);
+        `📅 <b>Дата:</b> ${formattedDate} (МСК)`,
+      ]);
       return res.send('YES');
     }
 
@@ -282,10 +288,8 @@ export class PaymentsController {
 
     // 8. Отправляем уведомление в канал о покупке
     try {
-      // Получаем информацию о пользователе
-      // TODO: добавить получение username
-      const now = new Date();
-      const formattedDate = now.toLocaleString('ru-RU', {
+      const formattedDate = new Date().toLocaleString('ru-RU', {
+        timeZone: 'Europe/Moscow',
         day: '2-digit',
         month: '2-digit',
         year: 'numeric',
@@ -296,16 +300,15 @@ export class PaymentsController {
       const periodText = session.period === 1 ? '1 месяц' : `${session.period} месяцев`;
       const tariffText = planMeta.label ?? periodText;
 
-      const message = [
-        '💰 <b>Новая покупка!</b>\n',
+      await this.notificationService.sendChannelPurchaseNotification([
+        '💰 <b>Новая покупка!</b>',
+        '',
         `👤 <b>Пользователь:</b> ${session.maxId ?? 'неизвестно'}`,
         `🆔 <b>Max ID:</b> <code>${session.maxId}</code>`,
         `📦 <b>Тариф:</b> ${tariffText}`,
         `💵 <b>Цена:</b> ${session.amount} ₽`,
-        `📅 <b>Дата:</b> ${formattedDate}`,
-      ].join('\n');
-
-      await this.notificationService.sendChannelNotification(message);
+        `📅 <b>Дата:</b> ${formattedDate} (МСК)`,
+      ]);
       this.logger.log(`Purchase notification sent to channel for user ${session.maxId}`);
     } catch (error) {
       this.logger.error('Failed to send purchase notification to channel:', error);

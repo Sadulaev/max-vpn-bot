@@ -509,6 +509,7 @@ export class BotPagesService {
           type: 'inline_keyboard',
           payload: {
             buttons: [
+              [{ type: 'callback', text: '📎 Ознакомиться с полной версией', payload: 'dl_privacy_pdf' }],
               [{ type: 'callback', text: '◀️ Главное меню', payload: 'main_menu' }],
             ],
           },
@@ -578,12 +579,69 @@ export class BotPagesService {
           type: 'inline_keyboard',
           payload: {
             buttons: [
+              [{ type: 'callback', text: '📎 Ознакомиться с полной версией', payload: 'dl_terms_pdf' }],
               [{ type: 'callback', text: '◀️ Главное меню', payload: 'main_menu' }],
             ],
           },
         },
       ],
     };
+  }
+
+  /**
+   * Сообщение со ссылкой на PDF. MAX не умеет слать документы как вложение,
+   * поэтому отдаём публичный URL `/assets/<file>` (как в max-bot-v2).
+   */
+  buildDocumentLinkPage(
+    kind: 'privacy' | 'terms',
+  ): NewMessageBody {
+    const filename =
+      kind === 'privacy' ? 'privacy-policy.pdf' : 'user-agreements.pdf';
+    const caption =
+      kind === 'privacy'
+        ? '🔒 **Политика конфиденциальности HIT VPN**'
+        : '📄 **Пользовательское соглашение HIT VPN**';
+    const backPayload =
+      kind === 'privacy' ? 'privacy_policy' : 'terms_of_service';
+    const url = this.assetUrl(filename);
+
+    if (!url) {
+      return {
+        text: '⚠️ Не удалось сформировать ссылку на документ. Попробуйте позже.',
+        attachments: [
+          {
+            type: 'inline_keyboard',
+            payload: {
+              buttons: [[{ type: 'callback', text: '◀️ Назад', payload: backPayload }]],
+            },
+          },
+        ],
+      };
+    }
+
+    return {
+      text: `${caption}\n\n📄 [${filename}](${url})`,
+      format: 'markdown',
+      attachments: [
+        {
+          type: 'inline_keyboard',
+          payload: {
+            buttons: [
+              [{ type: 'link', text: '📎 Открыть PDF', url }],
+              [{ type: 'callback', text: '◀️ Назад', payload: backPayload }],
+            ],
+          },
+        },
+      ],
+    };
+  }
+
+  private assetUrl(filename: string): string | null {
+    const base = (this.configService.get<string>('app.baseUrl') || '').replace(
+      /\/$/,
+      '',
+    );
+    return base ? `${base}/assets/${filename}` : null;
   }
 
   /** Уведомление рефереру о бонусе */

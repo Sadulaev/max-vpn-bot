@@ -33,7 +33,9 @@ services:
       DB_USERNAME: vpn
       DB_PASSWORD: neron
       DB_NAME: max_vpn
-      NODE_EXTRA_CA_CERTS: /certs/russian_trusted_root_ca_pem.crt
+      # Системный CA-store Alpine после установки сертификатов НУЦ в образе
+      NODE_EXTRA_CA_CERTS: /etc/ssl/certs/ca-certificates.crt
+      SSL_CERT_FILE: /etc/ssl/certs/ca-certificates.crt
     ports:
       - "${PORT:-3000}:${PORT:-3000}"
     dns:
@@ -42,7 +44,8 @@ services:
     volumes:
       - ./sessions:/app/sessions
       - ./assets:/app/assets
-      - /usr/local/share/ca-certificates/russian-trusted:/certs:ro
+      # Опционально: сертификаты с хоста перекрывают /certs из образа
+      # - /usr/local/share/ca-certificates/russian-trusted:/certs:ro
     depends_on:
       postgres:
         condition: service_healthy

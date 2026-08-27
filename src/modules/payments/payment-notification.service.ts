@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { MaxApiService } from '@modules/max-api';
 import type { NewMessageBody, MaxButtonRow } from '@modules/max-api';
+import { PaymentsService } from './payments.service';
 
 @Injectable()
 export class PaymentNotificationService {
@@ -10,6 +11,7 @@ export class PaymentNotificationService {
   constructor(
     private readonly maxApiService: MaxApiService,
     private readonly configService: ConfigService,
+    private readonly paymentsService: PaymentsService,
   ) {}
 
   /**
@@ -139,6 +141,27 @@ export class PaymentNotificationService {
   }
 
   /**
+   * Отправить уведомление о покупке в Telegram-канал:
+   * заголовок бота + тело + сумма покупок за сегодня (МСК).
+   */
+  async sendChannelPurchaseNotification(bodyLines: string[]): Promise<void> {
+    const title =
+      this.configService.get<string>('bot.notificationTitle', '') || 'HIT VPN';
+    const todayTotal = await this.paymentsService.getTodayPaidTotalMsk();
+    const totalFormatted = todayTotal.toLocaleString('ru-RU');
+
+    const message = [
+      `🤖 <b>${title}</b>`,
+      '',
+      ...bodyLines,
+      '',
+      `📊 <b>Покупки сегодня:</b> ${totalFormatted} ₽`,
+    ].join('\n');
+
+    await this.sendChannelNotification(message);
+  }
+
+  /**
    * Отправить HTML-сообщение в Telegram-канал уведомлений.
    * Требует TELEGRAM_BOT_TOKEN и TG_NOTIFICATION_CHANNEL_ID в конфигурации.
    */
@@ -166,4 +189,3 @@ export class PaymentNotificationService {
     }
   }
 }
-

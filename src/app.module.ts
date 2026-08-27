@@ -14,6 +14,7 @@ import { SubscriptionsModule } from '@modules/subscriptions';
 import { TasksModule } from '@modules/tasks';
 import { ReferralModule } from '@modules/referral/referral.module';
 import { BotPagesModule } from '@modules/bot-pages';
+import { AssetsModule } from '@modules/assets';
 import { MaxApiModule } from '@modules/max-api';
 import { MaxBotModule } from '@modules/max-bot';
 
@@ -48,6 +49,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
     AuthModule,
     MaxApiModule,
     MaxBotModule,
+    AssetsModule,
     RemnawaveApiModule,
     SubscriptionsModule,
     PaymentsModule,

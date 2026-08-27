@@ -2,6 +2,8 @@
 export interface BotConfig {
   supportContact: string;
   channelLink: string;
+  /** Заголовок в Telegram-уведомлениях о покупках */
+  notificationTitle: string;
 }
 
 // ============= APP CONFIG =============
@@ -74,6 +76,7 @@ export default (): Config => ({
   bot: {
     supportContact: process.env.BOT_SUPPORT_CONTACT || '',
     channelLink: process.env.BOT_CHANNEL_LINK || '',
+    notificationTitle: process.env.BOT_NOTIFICATION_TITLE || 'HIT VPN V1',
   },
   database: {
     host: process.env.DB_HOST || "localhost",

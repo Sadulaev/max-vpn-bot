@@ -255,5 +255,38 @@ export class PaymentsService {
     this.logger.log(`Selected ${selected.length} random paid sessions from ${allSessions.length} total`);
     return selected;
   }
+
+  /**
+   * Сумма оплаченных покупок за текущие сутки по московскому времени (Europe/Moscow).
+   * Учитываются сессии status=paid по createdAt (момент создания сессии ≈ оплата).
+   */
+  async getTodayPaidTotalMsk(now: Date = new Date()): Promise<number> {
+    const { start, end } = getMoscowDayBounds(now);
+    const raw = await this.paymentRepository
+      .createQueryBuilder('p')
+      .select('COALESCE(SUM(p.amount), 0)', 'total')
+      .where('p.status = :status', { status: 'paid' })
+      .andWhere('p.createdAt >= :start', { start })
+      .andWhere('p.createdAt < :end', { end })
+      .getRawOne<{ total: string }>();
+
+    return Number(raw?.total ?? 0);
+  }
+}
+
+/** Границы суток Europe/Moscow (без DST: всегда UTC+3) */
+function getMoscowDayBounds(now: Date): { start: Date; end: Date } {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Moscow',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(now);
+  const y = parts.find((p) => p.type === 'year')!.value;
+  const m = parts.find((p) => p.type === 'month')!.value;
+  const d = parts.find((p) => p.type === 'day')!.value;
+  const start = new Date(`${y}-${m}-${d}T00:00:00+03:00`);
+  const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
+  return { start, end };
 }
 

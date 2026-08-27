@@ -38,11 +38,17 @@ export class MaxBotService implements OnModuleInit {
     if (baseUrl) {
       const webhookUrl = `${baseUrl.replace(/\/$/, '')}/max/webhook`;
       this.logger.log(`Registering MAX webhook: ${webhookUrl}`);
-      const ok = await this.maxApi.registerWebhook(webhookUrl, webhookSecret || undefined);
-      if (ok) {
-        this.logger.log('MAX webhook registered successfully');
-      } else {
-        this.logger.warn('MAX webhook registration returned failure (check URL/token)');
+      try {
+        const ok = await this.maxApi.registerWebhook(webhookUrl, webhookSecret || undefined);
+        if (ok) {
+          this.logger.log('MAX webhook registered successfully');
+        } else {
+          this.logger.warn('MAX webhook registration returned failure (check URL/token)');
+        }
+      } catch (err) {
+        this.logger.error(
+          `MAX webhook registration threw: ${(err as Error)?.message ?? err} — continuing startup`,
+        );
       }
     } else {
       this.logger.warn('BASE_URL not set — skipping webhook registration');
@@ -175,6 +181,16 @@ export class MaxBotService implements OnModuleInit {
       return;
     }
 
+    if (payload === 'dl_privacy_pdf') {
+      await this.sendPrivacyPdf(userId);
+      return;
+    }
+
+    if (payload === 'dl_terms_pdf') {
+      await this.sendTermsPdf(userId);
+      return;
+    }
+
     // Неизвестный payload — возвращаем главное меню
     await this.showMainMenu(userId, callback.user.name);
   }
@@ -223,6 +239,16 @@ export class MaxBotService implements OnModuleInit {
 
   private async showTermsOfService(userId: number): Promise<void> {
     const body = this.pages.buildTermsOfServicePage();
+    await this.maxApi.sendMessage(userId, body);
+  }
+
+  private async sendPrivacyPdf(userId: number): Promise<void> {
+    const body = this.pages.buildDocumentLinkPage('privacy');
+    await this.maxApi.sendMessage(userId, body);
+  }
+
+  private async sendTermsPdf(userId: number): Promise<void> {
+    const body = this.pages.buildDocumentLinkPage('terms');
     await this.maxApi.sendMessage(userId, body);
   }
 

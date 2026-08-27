@@ -65,13 +65,23 @@ export class MaxApiService implements OnModuleInit {
   async sendMessage(userId: number, body: NewMessageBody): Promise<MaxSendMessageResponse | null> {
     if (!this.isConfigured()) return null;
 
+    if (!Number.isFinite(userId) || userId <= 0) {
+      this.logger.error(`sendMessage aborted: invalid userId=${userId}`);
+      return null;
+    }
+
     const url = new URL(`${this.apiUrl}/messages`);
     url.searchParams.set('user_id', String(userId));
+
+    const { disable_link_preview, ...payload } = body;
+    if (disable_link_preview === true) {
+      url.searchParams.set('disable_link_preview', 'true');
+    }
 
     const res = await fetch(url.toString(), {
       method: 'POST',
       headers: this.headers(),
-      body: JSON.stringify(body),
+      body: JSON.stringify(payload),
     });
 
     if (!res.ok) {
@@ -246,21 +256,30 @@ export class MaxApiService implements OnModuleInit {
       body.secret = secret;
     }
 
-    const res = await fetch(`${this.apiUrl}/subscriptions`, {
-      method: 'POST',
-      headers: this.headers(),
-      body: JSON.stringify(body),
-    });
+    try {
+      const res = await fetch(`${this.apiUrl}/subscriptions`, {
+        method: 'POST',
+        headers: this.headers(),
+        body: JSON.stringify(body),
+      });
 
-    if (!res.ok) {
-      const text = await res.text().catch(() => '');
-      this.logger.error(`registerWebhook failed (${res.status}): ${text}`);
+      if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        this.logger.error(`registerWebhook failed (${res.status}): ${text}`);
+        return false;
+      }
+
+      const data = (await res.json()) as { success: boolean; message?: string };
+      this.logger.log(`Webhook registered: ${JSON.stringify(data)}`);
+      return data.success;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      const cause = err instanceof Error && 'cause' in err ? String((err as Error & { cause?: unknown }).cause) : '';
+      this.logger.error(
+        `registerWebhook network error: ${message}${cause ? ` (${cause})` : ''} — bot will start without webhook`,
+      );
       return false;
     }
-
-    const data = (await res.json()) as { success: boolean; message?: string };
-    this.logger.log(`Webhook registered: ${JSON.stringify(data)}`);
-    return data.success;
   }
 
   /**

@@ -41,9 +41,15 @@ async function bootstrap() {
   const port = appConfig?.port || 3000;
   const isProduction = appConfig?.nodeEnv === 'production';
 
-  // Global prefix для API (исключая публичный эндпоинт /sub/:clientId)
+  // Global prefix для API (исключая публичные эндпоинты вне /api)
   app.setGlobalPrefix('api', {
-    exclude: ['sub/:clientId', 'payment/webhook', 'max/webhook'],
+    exclude: [
+      'sub/:clientId',
+      'payment/webhook',
+      'max/webhook',
+      'logo.png',
+      'assets/:filename',
+    ],
   });
 
   // Swagger только для development (после установки префикса)
