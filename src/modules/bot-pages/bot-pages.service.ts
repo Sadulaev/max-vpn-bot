@@ -19,7 +19,7 @@ const MAIN_TEXT = `🚀 **HIT VPN** — свобода интернета без
 @Injectable()
 export class BotPagesService {
   private supportContact: string;
-  private channelLink: string;
+  // private channelLink: string;
   private referralBaseUrl: string;
 
   constructor(
@@ -28,7 +28,7 @@ export class BotPagesService {
     private readonly subscriptionsService: SubscriptionsService,
   ) {
     this.supportContact = this.configService.get<string>('bot.supportContact', '');
-    this.channelLink = this.configService.get<string>('bot.channelLink', '');
+    // this.channelLink = this.configService.get<string>('bot.channelLink', '');
     this.referralBaseUrl = this.configService.get<string>('max.referralBaseUrl', '');
   }
 
@@ -45,9 +45,9 @@ export class BotPagesService {
       [{ type: 'callback', text: '👥 Реферальная система', payload: 'referral' }],
     ];
 
-    if (this.channelLink) {
-      buttons.push([{ type: 'link', text: '📡 Наш канал', url: this.channelLink }]);
-    }
+    // if (this.channelLink) {
+    //   buttons.push([{ type: 'link', text: '📡 Наш канал', url: this.channelLink }]);
+    // }
 
     buttons.push([
       { type: 'callback', text: '📄 Политика конфиденциальности', payload: 'privacy_policy' },
