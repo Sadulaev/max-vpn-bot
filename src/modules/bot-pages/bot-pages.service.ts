@@ -1,8 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import type { NewMessageBody, MaxButtonRow } from '@modules/max-api';
 import { PlansService } from '@modules/plans';
 import { SubscriptionsService } from '@modules/subscriptions';
+import { BotState } from '@database/entities';
 
 /** Константы текстов */
 const MAIN_TEXT = `🚀 **HIT VPN** — свобода интернета без ограничений\n\n` +
@@ -18,7 +21,6 @@ const MAIN_TEXT = `🚀 **HIT VPN** — свобода интернета без
 
 @Injectable()
 export class BotPagesService {
-  private supportContact: string;
   // private channelLink: string;
   private referralBaseUrl: string;
 
@@ -26,10 +28,18 @@ export class BotPagesService {
     private readonly configService: ConfigService,
     private readonly plansService: PlansService,
     private readonly subscriptionsService: SubscriptionsService,
+    @InjectRepository(BotState)
+    private readonly botStateRepository: Repository<BotState>,
   ) {
-    this.supportContact = this.configService.get<string>('bot.supportContact', '');
     // this.channelLink = this.configService.get<string>('bot.channelLink', '');
     this.referralBaseUrl = this.configService.get<string>('max.referralBaseUrl', '');
+  }
+
+  private async getSupportContact(): Promise<string> {
+    const row = await this.botStateRepository.findOne({ where: { name: 'support_contact' } });
+    const fromDb = row?.value?.trim();
+    if (fromDb) return fromDb;
+    return this.configService.get<string>('bot.supportContact', '') || '';
   }
 
   /** Главное меню */
@@ -358,16 +368,17 @@ export class BotPagesService {
   }
 
   /** Поддержка */
-  buildSupportPage(): NewMessageBody {
+  async buildSupportPage(): Promise<NewMessageBody> {
     const backButton: MaxButtonRow = [
       { type: 'callback', text: '◀️ Главное меню', payload: 'main_menu' },
     ];
 
     const buttons: MaxButtonRow[] = [];
+    const supportContact = await this.getSupportContact();
 
-    if (this.supportContact) {
+    if (supportContact) {
       buttons.push([
-        { type: 'link', text: '✉️ Написать в поддержку', url: this.supportContact },
+        { type: 'link', text: '✉️ Написать в поддержку', url: supportContact },
       ]);
     }
 

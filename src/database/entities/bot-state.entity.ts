@@ -17,6 +17,10 @@ export class BotState {
   @Column({ type: 'boolean', default: true })
   enabled: boolean = true;
 
+  /** Строковое значение настройки (например, URL поддержки) */
+  @Column({ type: 'text', nullable: true })
+  value: string | null = null;
+
   @CreateDateColumn()
   createdAt!: Date;
 

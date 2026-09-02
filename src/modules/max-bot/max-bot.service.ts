@@ -228,7 +228,7 @@ export class MaxBotService implements OnModuleInit {
   }
 
   private async showSupport(userId: number): Promise<void> {
-    const body = this.pages.buildSupportPage();
+    const body = await this.pages.buildSupportPage();
     await this.maxApi.sendMessage(userId, body);
   }
 

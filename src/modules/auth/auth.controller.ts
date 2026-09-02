@@ -10,6 +10,7 @@ import { BotState, Plan } from '@database/entities';
 
 const STANDARD_STATE_KEY = 'standard_subscriptions_enabled';
 const ANTI_THROTTLING_STATE_KEY = 'anti_throttling_subscriptions_enabled';
+const SUPPORT_CONTACT_KEY = 'support_contact';
 
 @ApiTags('Auth')
 @Controller('auth')
@@ -38,6 +39,28 @@ export class AuthController {
     return row.enabled;
   }
 
+  private async getValue(key: string): Promise<string | null> {
+    const row = await this.botStateRepository.findOne({ where: { name: key } });
+    const value = row?.value?.trim();
+    return value ? value : null;
+  }
+
+  private async setValue(key: string, value: string | null): Promise<string | null> {
+    const normalized = value?.trim() || null;
+    let row = await this.botStateRepository.findOne({ where: { name: key } });
+    if (!row) {
+      row = this.botStateRepository.create({
+        name: key,
+        enabled: true,
+        value: normalized,
+      });
+    } else {
+      row.value = normalized;
+    }
+    await this.botStateRepository.save(row);
+    return row.value;
+  }
+
   @Post('login')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Авторизация администратора' })
@@ -62,29 +85,37 @@ export class AuthController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Текущие настройки' })
   async getSettings() {
-    const [standardEnabled, antiThrottlingEnabled] = await Promise.all([
+    const [standardEnabled, antiThrottlingEnabled, supportContactDb] = await Promise.all([
       this.getFlag(STANDARD_STATE_KEY),
       this.getFlag(ANTI_THROTTLING_STATE_KEY),
+      this.getValue(SUPPORT_CONTACT_KEY),
     ]);
-    return { standardEnabled, antiThrottlingEnabled };
+    const supportContact =
+      supportContactDb ||
+      process.env.BOT_SUPPORT_CONTACT ||
+      '';
+    return { standardEnabled, antiThrottlingEnabled, supportContact };
   }
 
   @Put('settings')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Обновить настройки' })
-  async updateSettings(@Body() body: { standardEnabled?: boolean; antiThrottlingEnabled?: boolean }) {
+  async updateSettings(@Body() body: {
+    standardEnabled?: boolean;
+    antiThrottlingEnabled?: boolean;
+    supportContact?: string;
+  }) {
     if (body.standardEnabled !== undefined) {
       await this.setFlag(STANDARD_STATE_KEY, body.standardEnabled);
     }
     if (body.antiThrottlingEnabled !== undefined) {
       await this.setFlag(ANTI_THROTTLING_STATE_KEY, body.antiThrottlingEnabled);
     }
-    const [standardEnabled, antiThrottlingEnabled] = await Promise.all([
-      this.getFlag(STANDARD_STATE_KEY),
-      this.getFlag(ANTI_THROTTLING_STATE_KEY),
-    ]);
-    return { standardEnabled, antiThrottlingEnabled };
+    if (body.supportContact !== undefined) {
+      await this.setValue(SUPPORT_CONTACT_KEY, body.supportContact);
+    }
+    return this.getSettings();
   }
 
   // ─── Plan CRUD ───
