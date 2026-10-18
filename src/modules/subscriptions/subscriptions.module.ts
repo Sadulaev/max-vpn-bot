@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { Subscription } from '@database/entities';
+import { Subscription, User } from '@database/entities';
 import { RemnawaveApiModule } from '@modules/remnawave-api';
 import { MaxApiModule } from '@modules/max-api';
 import { SubscriptionsService } from './subscriptions.service';
@@ -9,7 +9,7 @@ import { SubscriptionPublicController } from './subscription-public.controller';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Subscription]),
+    TypeOrmModule.forFeature([Subscription, User]),
     RemnawaveApiModule,
     MaxApiModule,
   ],

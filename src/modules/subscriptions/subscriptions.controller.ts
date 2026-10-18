@@ -275,6 +275,19 @@ export class SubscriptionsController {
     return { success: true, data: result };
   }
 
+  @Post('restore-from-remnawave')
+  @ApiOperation({
+    summary: 'Восстановить подписки из Remnawave в локальную БД',
+    description:
+      'Импортирует пользователей Remnawave с заполненным telegramId (Max ID) и неистёкшей подпиской. Просроченные и без Max ID пропускаются.',
+  })
+  @ApiResponse({ status: 200, description: 'Результат восстановления' })
+  async restoreFromRemnawave() {
+    this.logger.log('Starting restore of subscriptions from Remnawave into local DB...');
+    const result = await this.subscriptionsService.restoreFromRemnawave();
+    return { success: true, data: result };
+  }
+
   @Post(':id/delete')
   @ApiOperation({ 
     summary: 'Удалить подписку', 

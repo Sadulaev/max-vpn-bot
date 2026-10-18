@@ -1,9 +1,11 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { randomUUID } from 'crypto';
 import {
   Subscription,
   SubscriptionSource,
+  User,
 } from '@database/entities';
 import { RemnawaveApiService } from '@modules/remnawave-api';
 import type { RemnawaveUserResponse } from '@modules/remnawave-api';
@@ -30,6 +32,8 @@ export class SubscriptionsService {
   constructor(
     @InjectRepository(Subscription)
     private readonly subscriptionRepo: Repository<Subscription>,
+    @InjectRepository(User)
+    private readonly userRepo: Repository<User>,
     private readonly remnawaveApi: RemnawaveApiService,
   ) {}
 
@@ -572,6 +576,175 @@ export class SubscriptionsService {
     }
 
     return null;
+  }
+
+  /**
+   * Восстановить подписки и пользователей в локальную БД из Remnawave
+   * (после потери локальной БД).
+   * Берём только пользователей с telegramId (Max ID) и неистёкшей подпиской.
+   */
+  async restoreFromRemnawave(): Promise<{
+    restored: number;
+    usersCreated: number;
+    skipped: number;
+    failed: number;
+    errors: string[];
+  }> {
+    if (!this.remnawaveApi.isConfigured()) {
+      return {
+        restored: 0,
+        usersCreated: 0,
+        skipped: 0,
+        failed: 0,
+        errors: ['Remnawave not configured'],
+      };
+    }
+
+    const now = Date.now();
+    let restored = 0;
+    let usersCreated = 0;
+    let skipped = 0;
+    let failed = 0;
+    const errors: string[] = [];
+    const ensuredMaxIds = new Set<string>();
+
+    this.logger.log('Restore from Remnawave: loading users...');
+    const remnawaveMap = await this.fetchRemnawaveUserMap();
+    const remnawaveUsers = Array.from(remnawaveMap.values());
+
+    this.logger.log(
+      `Restore from Remnawave: ${remnawaveUsers.length} users to check`,
+    );
+
+    for (const ru of remnawaveUsers) {
+      try {
+        const maxIdRaw = ru.telegramId ?? ru.maxId ?? null;
+        if (maxIdRaw == null || !Number.isFinite(Number(maxIdRaw))) {
+          skipped++;
+          continue;
+        }
+        const maxId = String(maxIdRaw);
+
+        const expireAt = ru.expireAt ? new Date(ru.expireAt) : null;
+        const isExpired =
+          ru.status === 'EXPIRED' ||
+          (expireAt != null && !Number.isNaN(expireAt.getTime()) && expireAt.getTime() <= now);
+
+        if (isExpired) {
+          skipped++;
+          continue;
+        }
+
+        const existing =
+          (await this.subscriptionRepo.findOne({ where: { username: ru.username } })) ??
+          (ru.shortUuid
+            ? await this.subscriptionRepo.findOne({ where: { shortUuid: ru.shortUuid } })
+            : null) ??
+          (await this.subscriptionRepo.findOne({
+            where: { remnawaveUuid: this.storeRemnawaveUserId(ru) },
+          }));
+
+        if (existing) {
+          let dirty = false;
+          if (!existing.maxId) {
+            existing.maxId = maxId;
+            dirty = true;
+          }
+          if (!existing.shortUuid && ru.shortUuid) {
+            existing.shortUuid = ru.shortUuid;
+            dirty = true;
+          }
+          if (!existing.remnawaveUuid) {
+            existing.remnawaveUuid = this.storeRemnawaveUserId(ru);
+            dirty = true;
+          }
+          if (!existing.username) {
+            existing.username = ru.username;
+            dirty = true;
+          }
+          if (dirty) {
+            await this.subscriptionRepo.save(existing);
+            restored++;
+          } else {
+            skipped++;
+          }
+        } else {
+          const reconstructedId = this.uuidFromPanelUsername(ru.username);
+          const subscriptionId = reconstructedId ?? randomUUID();
+          const startDate = ru.createdAt ? new Date(ru.createdAt) : new Date();
+          const safeStart = Number.isNaN(startDate.getTime()) ? new Date() : startDate;
+          const expireMs = expireAt && !Number.isNaN(expireAt.getTime())
+            ? expireAt.getTime()
+            : safeStart.getTime() + 30 * 24 * 60 * 60 * 1000;
+          const days = Math.max(
+            1,
+            Math.ceil((expireMs - safeStart.getTime()) / (24 * 60 * 60 * 1000)),
+          );
+
+          const nameFromDescription = ru.description
+            ? ru.description.includes('|')
+              ? ru.description.split('|').slice(1).join('|').trim()
+              : null
+            : null;
+
+          const subscription = this.subscriptionRepo.create({
+            id: subscriptionId,
+            username: ru.username,
+            remnawaveUuid: this.storeRemnawaveUserId(ru),
+            shortUuid: ru.shortUuid ?? null,
+            maxId,
+            name: nameFromDescription ? nameFromDescription.slice(0, 30) : null,
+            source: SubscriptionSource.BOT,
+            days,
+            startDate: safeStart,
+            isAdditional: false,
+            referrerId: null,
+          });
+
+          await this.subscriptionRepo.save(subscription);
+          restored++;
+          this.logger.log(
+            `Restored from Remnawave: maxId=${maxId} username="${ru.username}" id=${subscriptionId}`,
+          );
+        }
+
+        if (!ensuredMaxIds.has(maxId)) {
+          const existingUser = await this.userRepo.findOne({ where: { maxId } });
+          if (!existingUser) {
+            await this.userRepo.save(
+              this.userRepo.create({
+                maxId,
+                username: null,
+                firstName: null,
+                isAdmin: false,
+                isActive: true,
+              }),
+            );
+            usersCreated++;
+          }
+          ensuredMaxIds.add(maxId);
+        }
+      } catch (error) {
+        failed++;
+        const msg = error instanceof Error ? error.message : String(error);
+        if (errors.length < 50) {
+          errors.push(`${ru.username}: ${msg}`);
+        }
+        this.logger.warn(`Failed to restore from Remnawave "${ru.username}": ${msg}`);
+      }
+    }
+
+    this.logger.log(
+      `Restore from Remnawave complete: restored=${restored}, usersCreated=${usersCreated}, skipped=${skipped}, failed=${failed}`,
+    );
+    return { restored, usersCreated, skipped, failed, errors };
+  }
+
+  /** Восстановить UUID подписки из Remnawave username (uuid без дефисов) */
+  private uuidFromPanelUsername(username: string): string | null {
+    if (!/^[0-9a-f]{32}$/i.test(username)) return null;
+    const h = username.toLowerCase();
+    return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20, 32)}`;
   }
 
   /**
