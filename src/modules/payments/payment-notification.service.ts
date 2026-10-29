@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { MaxApiService } from '@modules/max-api';
 import type { NewMessageBody, MaxButtonRow } from '@modules/max-api';
+import { BotTokensService } from '@modules/bot-tokens';
 import { PaymentsService } from './payments.service';
 
 @Injectable()
@@ -11,6 +12,7 @@ export class PaymentNotificationService {
   constructor(
     private readonly maxApiService: MaxApiService,
     private readonly configService: ConfigService,
+    private readonly botTokens: BotTokensService,
     private readonly paymentsService: PaymentsService,
   ) {}
 
@@ -166,7 +168,7 @@ export class PaymentNotificationService {
    * Требует TELEGRAM_BOT_TOKEN и TG_NOTIFICATION_CHANNEL_ID в конфигурации.
    */
   async sendChannelNotification(htmlMessage: string): Promise<void> {
-    const botToken = this.configService.get<string>('telegram.botToken', '');
+    const botToken = this.botTokens.getTelegramBotToken();
     const channelId = this.configService.get<string>('telegram.notificationChannelId', '');
 
     if (!botToken || !channelId) {

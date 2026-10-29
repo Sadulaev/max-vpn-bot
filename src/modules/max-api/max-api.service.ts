@@ -29,6 +29,24 @@ export class MaxApiService implements OnModuleInit {
     return !!this.botToken;
   }
 
+  getBotToken(): string {
+    return this.botToken;
+  }
+
+  /** Hot-swap токена без перезапуска процесса */
+  setBotToken(token: string): void {
+    this.botToken = (token || '').trim();
+    if (this.botToken) {
+      this.logger.log(`MAX_BOT_TOKEN updated in memory (length=${this.botToken.length})`);
+    } else {
+      this.logger.warn('MAX_BOT_TOKEN cleared in memory');
+    }
+  }
+
+  getApiUrl(): string {
+    return this.apiUrl;
+  }
+
   private headers(): Record<string, string> {
     return {
       Authorization: this.botToken,

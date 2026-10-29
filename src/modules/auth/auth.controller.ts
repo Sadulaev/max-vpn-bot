@@ -7,6 +7,7 @@ import { LoginDto } from './dto/login.dto';
 import { AuthResponse } from './interfaces/auth.interface';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { BotState, Plan } from '@database/entities';
+import { BotTokensService } from '@modules/bot-tokens';
 
 const STANDARD_STATE_KEY = 'standard_subscriptions_enabled';
 const ANTI_THROTTLING_STATE_KEY = 'anti_throttling_subscriptions_enabled';
@@ -17,6 +18,7 @@ const SUPPORT_CONTACT_KEY = 'support_contact';
 export class AuthController {
   constructor(
     private readonly authService: AuthService,
+    private readonly botTokens: BotTokensService,
     @InjectRepository(BotState)
     private readonly botStateRepository: Repository<BotState>,
     @InjectRepository(Plan)
@@ -94,7 +96,12 @@ export class AuthController {
       supportContactDb ||
       process.env.BOT_SUPPORT_CONTACT ||
       '';
-    return { standardEnabled, antiThrottlingEnabled, supportContact };
+    return {
+      standardEnabled,
+      antiThrottlingEnabled,
+      supportContact,
+      ...this.botTokens.getTokensPublicInfo(),
+    };
   }
 
   @Put('settings')
@@ -105,6 +112,8 @@ export class AuthController {
     standardEnabled?: boolean;
     antiThrottlingEnabled?: boolean;
     supportContact?: string;
+    maxBotToken?: string;
+    telegramBotToken?: string;
   }) {
     if (body.standardEnabled !== undefined) {
       await this.setFlag(STANDARD_STATE_KEY, body.standardEnabled);
@@ -114,6 +123,12 @@ export class AuthController {
     }
     if (body.supportContact !== undefined) {
       await this.setValue(SUPPORT_CONTACT_KEY, body.supportContact);
+    }
+    if (body.maxBotToken !== undefined && body.maxBotToken.trim()) {
+      await this.botTokens.applyMaxBotToken(body.maxBotToken);
+    }
+    if (body.telegramBotToken !== undefined && body.telegramBotToken.trim()) {
+      await this.botTokens.applyTelegramBotToken(body.telegramBotToken);
     }
     return this.getSettings();
   }

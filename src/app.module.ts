@@ -17,6 +17,7 @@ import { BotPagesModule } from '@modules/bot-pages';
 import { AssetsModule } from '@modules/assets';
 import { MaxApiModule } from '@modules/max-api';
 import { MaxBotModule } from '@modules/max-bot';
+import { BotTokensModule } from '@modules/bot-tokens';
 
 // Interceptors
 import { TelegrafErrorInterceptor } from '@common/interceptors/telegraf-error.interceptor';
@@ -46,6 +47,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
     }),
 
     // Функциональные модули
+    BotTokensModule,
     AuthModule,
     MaxApiModule,
     MaxBotModule,

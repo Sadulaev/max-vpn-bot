@@ -7,6 +7,7 @@ import { PlansService } from '@modules/plans';
 import { PaymentsService } from '@modules/payments';
 import { FreekassaService } from '@modules/payments';
 import { SubscriptionsService } from '@modules/subscriptions';
+import { BotTokensService } from '@modules/bot-tokens';
 
 /** Хранит реферер для нового пользователя до момента покупки */
 const pendingReferrals = new Map<string, string>(); // userId → referrerId
@@ -23,35 +24,16 @@ export class MaxBotService implements OnModuleInit {
     private readonly freekassaService: FreekassaService,
     private readonly subscriptionsService: SubscriptionsService,
     private readonly configService: ConfigService,
+    private readonly botTokens: BotTokensService,
   ) {}
 
   async onModuleInit() {
-    const baseUrl = this.configService.get<string>('app.baseUrl', '');
-    const webhookSecret = this.configService.get<string>('max.webhookSecret', '');
-
-    if (!this.maxApi.isConfigured()) {
-      this.logger.warn('MaxApiService not configured — skipping webhook registration');
-      return;
-    }
-
-    // Регистрируем webhook
-    if (baseUrl) {
-      const webhookUrl = `${baseUrl.replace(/\/$/, '')}/max/webhook`;
-      this.logger.log(`Registering MAX webhook: ${webhookUrl}`);
-      try {
-        const ok = await this.maxApi.registerWebhook(webhookUrl, webhookSecret || undefined);
-        if (ok) {
-          this.logger.log('MAX webhook registered successfully');
-        } else {
-          this.logger.warn('MAX webhook registration returned failure (check URL/token)');
-        }
-      } catch (err) {
-        this.logger.error(
-          `MAX webhook registration threw: ${(err as Error)?.message ?? err} — continuing startup`,
-        );
-      }
-    } else {
-      this.logger.warn('BASE_URL not set — skipping webhook registration');
+    try {
+      await this.botTokens.registerWebhook();
+    } catch (err) {
+      this.logger.error(
+        `MAX webhook registration threw: ${(err as Error)?.message ?? err} — continuing startup`,
+      );
     }
   }
 
